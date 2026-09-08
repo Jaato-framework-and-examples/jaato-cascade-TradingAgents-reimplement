@@ -17,7 +17,7 @@ expected to change.
 | 8 | **Licence — only for what is copied.** This repository is a *reimplementation*: nothing from TradingAgents is copied verbatim, so Apache-2.0 attaches to nothing here. The architecture is an idea; the paper is cited as a courtesy. jaato's BUSL-1.1 governs redistribution of the port itself. Not legal advice. | note | keep it a reimplementation: write personas, schemas, data layer and decision log fresh. | policy |
 | 9 | **`mcp` version mismatch in the dev venv** produces a harmless traceback on every `jaato-scaffold` call. | none | pin `mcp` when the daemon path is used. | open |
 | 10 | **Host tools are attach-bound.** They live in the driver process; a cold session cannot use them until a client attaches (`session.wake` → `DEFERRED`). | low in-process; medium for daemon deployments | a `ToolPlugin` packaging of the data layer for daemon deployments (Phase 3). | open |
-| 11 | **`echo` cannot script a multi-turn tool loop** (one call, then text). Driver-level tests cover control flow, journal and processors; the analyst loop is tested against a real model or a recorded provider trace. | low | per-stage echo profiles drive the whole pipeline end to end (`tests/test_pipeline_echo.py`); the analyst tool loop itself still needs a live model or a replay fixture. | done (control flow) |
+| 11 | **`echo` cannot script a multi-turn tool loop** (one call, then text). Driver-level tests cover control flow, journal and processors; the analyst loop is tested against a real model or a recorded provider trace. | low | per-stage echo profiles drive the whole pipeline end to end (`tests/test_pipeline_echo.py`); the analyst tool loop itself still needs a live model or a replay fixture. | done (control flow); the live analyst loop ran on 2026-09-08, see the live-run findings below |
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
 | 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are fetched by the sentiment prefetch alongside company and market news, all four concurrently under one 20 s deadline. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `data.gather_with_deadline`; fixture tests in `tests/test_social.py`. | done |
@@ -44,6 +44,50 @@ take), `deferred` (out of scope for parity), `policy` (a rule, not work).
   the `mcp` version traceback (#9) and `file_edit` refusing to initialise
   without a `config_root` for its backups. Neither plugin is in any profile's
   `plugins:` list, so neither affects a stage.
+
+## Findings from the first live-model run (2026-09-08, openrouter_sonnet)
+
+`analyze NVDA 2026-09-04 --analysts market -v` against the shared daemon on
+`/tmp/jaato.sock`; Sonnet 4.5 on every stage; exit 0 in ~5 min over 9 sessions
+(market analyst → bull/bear → research manager → trader → 3 risk debaters →
+portfolio manager). This closes the "not run yet" half of #11.
+
+- **The real tool loop works, and the verified-numbers contract holds across
+  the whole graph.** The market analyst called three host tools and quoted
+  `snapshot()`'s figures back exactly (230.36 close, SMA 220.08 / 210.57 /
+  196.68, RSI 60.39, ATR 7.38). Those numbers then travelled through the
+  debate, the research plan and into the trader's stop-loss (`220.08`) without
+  a decimal drifting. Every completion payload arrived with `errors: []`; no
+  stage exhausted `max_turns`, so no `max_turns` tuning was needed after all.
+- **`warnings[]` is load-bearing, not decoration.** With only the market
+  analyst selected, the research manager warned "no fundamental catalyst
+  identified — purely technical, vulnerable to macro headwinds", and the
+  portfolio manager carried the compressed risk/reward into its sizing advice.
+  A single-analyst run reports its own thinness.
+- **The driver was writing a product into the framework's config_root.**
+  `RunConfig.journal_dir` defaulted to `<workspace>/.jaato/journal/`, but
+  `.jaato/` is the daemon's `config_root`: `jaato-scaffold explain paths`
+  assigns it profiles, agents, instructions and the framework's own `logs/`
+  and `sessions/`, and nothing else. The live run made the mixing visible —
+  the daemon dropped `.jaato/sessions/` and `.jaato/.artifact_tracker.json`
+  next to our journal. It also matters beyond tidiness: `server/apparmor.py`
+  grants a confined session write access to `.jaato/sessions/` and
+  `.jaato/logs/` specifically, and jaato is tightening writes under
+  `config_root` (`b034904a` denies writes to `.jaato/templates/`), so a driver
+  product parked there sits in the blast radius with no grant covering it.
+  Fixed: the journal defaults to `<workspace>/.ta_cascade/journal/`, and
+  `tests/test_config.py` now asserts no driver path resolves under
+  `config_root`. Filed jaato-side so `explain paths` states the rule.
+- **`-v` was unusable as a watch mode.** It raised the *root* logger to DEBUG,
+  so yfinance and its peewee cache emitted hundreds of lines per fetch and
+  buried the pipeline's own output. Fixed by keeping the root at INFO and
+  deepening only `ta_cascade` — an allowlist of our own namespace rather than
+  a denylist of third-party logger names that would need a new entry per
+  dependency.
+- **Still open: transcripts double the speaker label.** `4_risk/debate.md`
+  reads `Aggressive: Aggressive:` — the report writer prefixes the speaker and
+  the persona also opens with its own name. Cosmetic, in the shipped report,
+  not yet fixed.
 
 ## Feature parity with the reference implementation
 

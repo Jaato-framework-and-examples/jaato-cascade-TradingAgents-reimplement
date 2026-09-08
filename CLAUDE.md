@@ -136,7 +136,13 @@ run_cascade.py             thin entry point (scaffolded originally; delegates to
                                       portfolio_decision, reflection)
   scripts/processors/*.py             2 completion gates: analyst_report.py, price_fields.py
   scripts/prefetch_sentiment.py       the sentiment analyst's four-source prefetch
-  journal/  logs/                     runtime, gitignored
+  logs/  sessions/  .artifact_tracker.json
+                                      the FRAMEWORK's runtime state, gitignored.
+                                      `.jaato/` is the daemon's config_root and holds
+                                      framework assets only — never a driver product.
+
+.ta_cascade/               the DRIVER's runtime state, gitignored
+  journal/                 per-run resume journals (see RunConfig.journal_dir)
 
 tests/                     unit tests + test_pipeline_echo.py (daemon-marked)
 docs/assessment.md         the port assessment (moved from the jaato repo; framework paths refer to jaato)

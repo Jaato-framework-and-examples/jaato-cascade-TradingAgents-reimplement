@@ -40,8 +40,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
+    # The root stays at INFO so a dependency's own DEBUG stream (yfinance and
+    # its peewee cache emit hundreds of lines per fetch) can never bury the
+    # pipeline.  ``-v`` deepens this package only: verbosity is about the
+    # cascade, not about every library that happens to share the process.
+    logging.basicConfig(level=logging.INFO,
                         format="%(levelname)s %(name)s: %(message)s")
+    logging.getLogger(__package__).setLevel(
+        logging.DEBUG if args.verbose else logging.INFO)
     cfg = RunConfig(
         ticker=args.ticker, trade_date=args.trade_date, asset_type=args.asset_type,
         analysts=[s.strip() for s in args.analysts.split(",") if s.strip()],

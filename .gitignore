@@ -3,8 +3,10 @@
 __pycache__/
 *.pyc
 .jaato/logs/
+.jaato/sessions/
+.jaato/.artifact_tracker.json
 .jaato/memories.jsonl
 results/
 .pytest_cache/
-.jaato/journal/
 *.egg-info/
+.ta_cascade/

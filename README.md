@@ -34,7 +34,8 @@ profile in `.jaato/profiles/<set>/`; the set is selected by
 cost, no credentials; what the tests run on).
 
 A crashed run resumes where it stopped: every stage and debate turn is
-journaled under `.jaato/journal/` and cleared on success. Decisions are
+journaled under `.ta_cascade/journal/` and cleared on success (`.jaato/`
+is the framework's config_root and stays framework-only). Decisions are
 recorded in `~/.ta_cascade/decisions.jsonl`; the next run on the same ticker
 scores them against realised returns, has a reflector agent write a lesson,
 and hands the lessons to the portfolio manager.
