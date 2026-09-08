@@ -387,3 +387,195 @@ def return_after(symbol: str, trade_date: str, holding_days: int) -> Optional[Tu
         return None
     first, last = float(df["Close"].iloc[0]), float(df["Close"].iloc[holding_days])
     return last / first - 1, df.index[holding_days].date().isoformat()
+
+
+# ---------------------------------------------------------------- social (StockTwits, Reddit)
+
+_UA = "ta-cascade/0.1 (+https://github.com/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement)"
+_FEED_CAP_BYTES = 5 * 1024 * 1024
+_QUOTE_SUFFIXES = ("USD", "USDT", "USDC", "EUR", "GBP", "BTC", "ETH")
+DEFAULT_SUBREDDITS = ("wallstreetbets", "stocks", "investing")
+
+
+def crypto_base(symbol: str) -> Optional[str]:
+    """``BTC`` for a crypto pair written as ``BTC-USD``; ``None`` for anything else."""
+    s = symbol.strip().upper()
+    if "-" in s:
+        base, _, quote = s.rpartition("-")
+        if base and quote in _QUOTE_SUFFIXES:
+            return base
+    return None
+
+
+def _in_window(when: Optional[dt.datetime], start: dt.date, end: dt.date) -> bool:
+    """Look-ahead safe: an undated item is never inside a historical window."""
+    return when is not None and start <= when.date() <= end
+
+
+def _iso(raw) -> Optional[dt.datetime]:
+    try:
+        return dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _get(url: str, *, timeout: float, accept: str = "*/*", params=None):
+    """One bounded GET: identified User-Agent, size cap, raised on HTTP errors."""
+    import requests
+    resp = requests.get(url, params=params, timeout=timeout, stream=True,
+                        headers={"User-Agent": _UA, "Accept": accept})
+    resp.raise_for_status()
+    body = resp.raw.read(_FEED_CAP_BYTES + 1, decode_content=True)
+    if len(body) > _FEED_CAP_BYTES:
+        raise ValueError(f"response exceeded {_FEED_CAP_BYTES} bytes")
+    return body
+
+
+def stocktwits_messages(symbol: str, start_date: str, end_date: str, as_of: str,
+                        limit: int = 30, timeout: float = 10.0) -> str:
+    """Recent StockTwits messages for ``symbol`` inside the window, with a bull/bear tally.
+
+    The public symbol stream needs no key but serves only recent messages, so
+    a historical window is usually empty; that case is reported as such and
+    kept distinct from a failed fetch, which is reported as unavailable.
+    """
+    base = crypto_base(symbol)
+    st_symbol = f"{base}.X" if base else symbol.strip().upper()
+    try:
+        raw = _get(f"https://api.stocktwits.com/api/2/streams/symbol/{st_symbol}.json",
+                   timeout=timeout, accept="application/json", params={"limit": limit})
+        payload = json.loads(raw)
+    except Exception as exc:  # noqa: BLE001
+        return _unavailable(f"StockTwits stream for {st_symbol}", exc)
+    start, end = _date(start_date), min(_date(end_date), _date(as_of))
+    msgs = [m for m in (payload.get("messages") or []) if _in_window(_iso(m.get("created_at")), start, end)]
+    if not msgs:
+        return (f"NO_DATA: no StockTwits messages for {st_symbol} dated {start}..{end} "
+                f"(the public stream serves recent messages only). This is an absence "
+                f"of in-window messages, not a failed fetch.")
+    tally = {"Bullish": 0, "Bearish": 0, "unlabelled": 0}
+    lines = []
+    for m in msgs[:limit]:
+        label = ((m.get("entities") or {}).get("sentiment") or {}).get("basic")
+        key = label if label in ("Bullish", "Bearish") else "unlabelled"
+        tally[key] += 1
+        body = " ".join(str(m.get("body") or "").split())[:280]
+        user = (m.get("user") or {}).get("username", "?")
+        lines.append(f"[{str(m.get('created_at', ''))[:10]} @{user} {key}] {body}")
+    total = sum(tally.values())
+    head = (f"# StockTwits {st_symbol}: {total} messages {start}..{end} — "
+            f"Bullish {tally['Bullish']} ({tally['Bullish'] * 100 // total}%), "
+            f"Bearish {tally['Bearish']} ({tally['Bearish'] * 100 // total}%), "
+            f"unlabelled {tally['unlabelled']}")
+    return head + "\n" + "\n".join(lines)
+
+
+def _strip_html(content: str) -> str:
+    import html
+    import re
+    if "<!-- SC_OFF -->" in content and "<!-- SC_ON -->" in content:
+        content = content.split("<!-- SC_OFF -->", 1)[1].split("<!-- SC_ON -->", 1)[0]
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", content)).split())
+
+
+def _reddit_feed(symbol_query: str, sub: str, limit: int, timeout: float,
+                 retry_wait_cap: float) -> Optional[List[Dict[str, Any]]]:
+    """Parse one subreddit's Atom search feed. ``None`` means the fetch failed;
+    ``[]`` means it ran and matched nothing — the two must stay distinct."""
+    import time
+    import xml.etree.ElementTree as ET
+    import requests
+    url = f"https://www.reddit.com/r/{sub}/search.rss"
+    params = {"q": symbol_query, "restrict_sr": "on", "sort": "new", "t": "week", "limit": limit}
+    for attempt in (1, 2):
+        try:
+            raw = _get(url, timeout=timeout, accept="application/atom+xml", params=params)
+            break
+        except requests.HTTPError as exc:
+            resp = getattr(exc, "response", None)
+            if attempt == 1 and resp is not None and resp.status_code == 429:
+                try:
+                    wait = min(float(resp.headers.get("Retry-After", "0") or 0), retry_wait_cap)
+                except ValueError:
+                    wait = 0.0
+                if wait > retry_wait_cap:
+                    return None
+                time.sleep(wait)
+                continue
+            return None
+        except Exception:  # noqa: BLE001
+            return None
+    else:
+        return None
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return None
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    posts = []
+    for entry in root.findall("a:entry", ns)[:limit]:
+        title = entry.findtext("a:title", default="", namespaces=ns) or ""
+        published = _iso(entry.findtext("a:published", default=None, namespaces=ns))
+        content = entry.findtext("a:content", default="", namespaces=ns) or ""
+        posts.append({"title": " ".join(title.split()), "published": published,
+                      "excerpt": _strip_html(content)[:240]})
+    return posts
+
+
+def reddit_posts(symbol: str, start_date: str, end_date: str, as_of: str,
+                 subreddits: Iterable[str] = DEFAULT_SUBREDDITS, limit_per_sub: int = 5,
+                 timeout: float = 10.0, retry_wait_cap: float = 5.0) -> str:
+    """Posts mentioning ``symbol`` across finance subreddits, inside the window.
+
+    Keyless, via each subreddit's public Atom search feed (the JSON search
+    endpoint is blocked for anonymous clients).  A subreddit whose fetch
+    failed is reported as unavailable — never as "no posts", which would
+    assert a silence nobody observed.  A 429 is retried once after a short
+    wait; anything longer is treated as a failed fetch, because this runs
+    under a session-prep deadline where a minute's sleep is a failed session.
+    """
+    query = crypto_base(symbol) or symbol.strip().upper()
+    start, end = _date(start_date), min(_date(end_date), _date(as_of))
+    blocks, failed, found = [], [], 0
+    for sub in subreddits:
+        posts = _reddit_feed(query, sub, limit_per_sub, timeout, retry_wait_cap)
+        if posts is None:
+            failed.append(sub)
+            blocks.append(f"r/{sub}: {UNAVAILABLE} (fetch failed — not an absence of posts)")
+            continue
+        posts = [p for p in posts if _in_window(p["published"], start, end)]
+        if not posts:
+            blocks.append(f"r/{sub}: no posts mentioning {query} dated {start}..{end}")
+            continue
+        found += len(posts)
+        lines = [f"r/{sub}: {len(posts)} posts mentioning {query} (RSS: no scores or comment counts)"]
+        for p in posts:
+            lines.append(f"  [{p['published'].date()}] {p['title']}"
+                         + (f"\n    {p['excerpt']}" if p["excerpt"] else ""))
+        blocks.append("\n".join(lines))
+    if failed and len(failed) == len(list(subreddits)):
+        return (f"{UNAVAILABLE}: every Reddit source failed ({', '.join('r/' + s for s in failed)}); "
+                f"this is not an absence of discussion. Do not infer sentiment from it.")
+    head = f"# Reddit {query}: {found} in-window posts across {', '.join('r/' + s for s in subreddits)}"
+    return head + "\n" + "\n\n".join(blocks)
+
+
+def gather_with_deadline(seconds: float, jobs: Dict[str, Tuple]) -> Dict[str, str]:
+    """Run ``{name: (fn, *args)}`` concurrently; each result is a string, and
+    a job still running at the deadline yields an UNAVAILABLE sentence."""
+    import concurrent.futures as cf
+    ex = cf.ThreadPoolExecutor(max_workers=max(1, len(jobs)))
+    futures = {name: ex.submit(job[0], *job[1:]) for name, job in jobs.items()}
+    out: Dict[str, str] = {}
+    try:
+        for name, fut in futures.items():
+            try:
+                out[name] = fut.result(timeout=seconds)
+            except cf.TimeoutError:
+                out[name] = (f"{UNAVAILABLE}: {name} did not answer within {seconds:.0f}s. "
+                             f"Do not estimate or invent these values.")
+            except Exception as exc:  # noqa: BLE001
+                out[name] = _unavailable(name, exc)
+    finally:
+        ex.shutdown(wait=False)
+    return out
