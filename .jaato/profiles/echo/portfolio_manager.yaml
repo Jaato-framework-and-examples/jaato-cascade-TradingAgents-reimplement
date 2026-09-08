@@ -1,0 +1,24 @@
+# portfolio_manager — echo set: deterministic test double, no credentials, no network.
+name: portfolio_manager
+inherits:
+- _base_portfolio_manager
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        rating: Overweight
+        executive_summary: 'echo: overweight with a tight stop.'
+        investment_thesis: 'echo: thesis text.'
+        price_target: 120.0
+        time_horizon: 3 months
+        errors: []
+        warnings: []
+env:
+  TA_CASCADE_PREFETCH: 'off'

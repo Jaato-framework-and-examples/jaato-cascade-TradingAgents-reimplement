@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["call_was_correct", "lesson", "errors", "warnings"],
+  "properties": {
+    "call_was_correct": {"type": "boolean", "description": "Whether the direction of the rating matched the realised alpha."},
+    "lesson": {"type": "string", "description": "Two to four sentences: what held, what failed, one concrete lesson."},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

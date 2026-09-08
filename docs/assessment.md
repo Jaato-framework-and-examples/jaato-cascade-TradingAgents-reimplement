@@ -191,11 +191,19 @@ are ordinary Python:
    the debate history, `past_context` — exactly as the node closures compose
    their f-strings today.
 
-`InProcessClient` is the right transport for parity with
+`InProcessClient` looked like the right transport for parity with
 `TradingAgentsGraph.propagate()`: no daemon, no socket, no cold-start; the
 same script switches to `IPCClient` (daemon, warm runner pool, observers can
 attach by cascade id) by changing the `_open_session` helper the generator
-emits. The archetype's own recipe notes — `client_type=ClientType.API` keeps
+emits. **Decision (implementation): the daemon transport, as
+`IPCRecoveryClient`.** Starting the port showed that the in-process facade
+applies only part of a named profile — model, provider, plugins,
+`plugin_configs`, `completion_payload_schema`, `suppress_base_instructions`
+— and not `completion_processors`, `max_turns`, `spawn_payload_schema` or
+`budget_control` (`jaato_embedded/client.py:110-142`), so the gates this
+pipeline is built on would not run there. The daemon honours the whole
+contract; its cost is a one-time cold start per driver process. See
+[gaps.md](gaps.md) #13. The archetype's own recipe notes — `client_type=ClientType.API` keeps
 `signal_completion`, `env_file` must be a real path, `complete()` not `ask()`
 for a gated stage because `TURN_COMPLETED` fires mid-flight when the daemon
 re-prompts (jaato #767) — are the traps a hand-written driver would fall

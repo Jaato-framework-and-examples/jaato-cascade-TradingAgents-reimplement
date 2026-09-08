@@ -1,0 +1,32 @@
+# sentiment_analyst — echo set: deterministic test double, no credentials, no network.
+name: sentiment_analyst
+inherits:
+- _base_sentiment_analyst
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        report: Echo report for sentiment. Echo report for sentiment. Echo report for sentiment. Echo
+          report for sentiment. Echo report for sentiment. Echo report for sentiment. Echo report for
+          sentiment. Echo report for sentiment. Echo report for sentiment. Echo report for sentiment.
+          Echo report for sentiment. Echo report for sentiment. Echo report for sentiment. Echo report
+          for sentiment. Echo report for sentiment. Echo report for sentiment. Echo report for sentiment.
+          Echo report for sentiment. Echo report for sentiment. Echo report for sentiment. Echo report
+          for sentiment. Echo report for sentiment. Echo report for sentiment. Echo report for sentiment.
+          Echo report for sentiment. Echo report for sentiment. Echo report for sentiment. Echo report
+          for sentiment. Echo report for sentiment. Echo report for sentiment.
+        stance: bullish
+        confidence: medium
+        tools_used: []
+        errors: []
+        warnings:
+        - 'echo provider: no data was fetched'
+env:
+  TA_CASCADE_PREFETCH: 'off'

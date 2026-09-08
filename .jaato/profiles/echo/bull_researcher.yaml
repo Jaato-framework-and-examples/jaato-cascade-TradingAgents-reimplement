@@ -1,0 +1,15 @@
+# bull_researcher — echo set: deterministic test double, no credentials, no network.
+name: bull_researcher
+inherits:
+- _base_bull_researcher
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    response: 'Bull: echo argues the upside case.'
+env:
+  TA_CASCADE_PREFETCH: 'off'

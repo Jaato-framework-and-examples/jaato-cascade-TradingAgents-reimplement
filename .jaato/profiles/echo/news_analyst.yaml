@@ -1,0 +1,31 @@
+# news_analyst — echo set: deterministic test double, no credentials, no network.
+name: news_analyst
+inherits:
+- _base_news_analyst
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        report: Echo report for news. Echo report for news. Echo report for news. Echo report for news.
+          Echo report for news. Echo report for news. Echo report for news. Echo report for news. Echo
+          report for news. Echo report for news. Echo report for news. Echo report for news. Echo report
+          for news. Echo report for news. Echo report for news. Echo report for news. Echo report for
+          news. Echo report for news. Echo report for news. Echo report for news. Echo report for news.
+          Echo report for news. Echo report for news. Echo report for news. Echo report for news. Echo
+          report for news. Echo report for news. Echo report for news. Echo report for news. Echo report
+          for news.
+        stance: neutral
+        confidence: medium
+        tools_used: []
+        errors: []
+        warnings:
+        - 'echo provider: no data was fetched'
+env:
+  TA_CASCADE_PREFETCH: 'off'

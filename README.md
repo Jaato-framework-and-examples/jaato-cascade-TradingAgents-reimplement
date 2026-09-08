@@ -17,21 +17,47 @@ log are written fresh. See [docs/gaps.md](docs/gaps.md) #8.
   primitive-by-primitive mapping, a worked slice, gaps, phasing.
 - [docs/gaps.md](docs/gaps.md) — the living gap tracker.
 
+## Running
+
+```bash
+python -m venv .venv && .venv/bin/pip install -e ".[dev]"     # plus jaato-server, for the daemon
+jaato-doctor --workspace . --env-file .env                      # preflight
+# set JAATO_PROFILE_SET and the provider credential in .env, then:
+python -m ta_cascade analyze NVDA 2026-01-15 --analysts market,news,fundamentals
+```
+
+The driver talks to a jaato daemon over IPC (autostarted on first use; a
+cold start takes 30–60 s). Each pipeline node is a session named by a
+profile in `.jaato/profiles/<set>/`; the set is selected by
+`JAATO_PROFILE_SET` in the workspace `.env`. Two sets ship: `openrouter_sonnet`
+(real models) and `echo` (the framework's deterministic test double — zero
+cost, no credentials; what the tests run on).
+
+A crashed run resumes where it stopped: every stage and debate turn is
+journaled under `.jaato/journal/` and cleared on success. Decisions are
+recorded in `~/.ta_cascade/decisions.jsonl`; the next run on the same ticker
+scores them against realised returns, has a reflector agent write a lesson,
+and hands the lessons to the portfolio manager.
+
+## Tests
+
+```bash
+.venv/bin/pytest -q                       # unit tests, no daemon
+.venv/bin/pytest -q -m daemon             # end to end over a private daemon on the echo set
+```
+
 ## Layout
 
 ```
 .jaato/
-  profiles/_base_<agent>.yaml       provider-agnostic stage determinism (12 agents)
+  profiles/_base_<agent>.yaml       provider-agnostic stage determinism (13 agents)
   profiles/<set>/<agent>.yaml       provider + model binding, selected by JAATO_PROFILE_SET
-  agents/<agent>.md                 personas ({{param}} substitution)
+  agents/<agent>.md                 personas ({{param}} substitution, one prefetch)
+  instructions/00-team.md           the base layer every persona sits on
   completion_schemas/*.json         typed payloads (the signal_completion tool's parameters)
   scripts/processors/*.py           completion gates (validate / render)
-ta_cascade/                         the driver package (pipeline, host tools, journal, memory)
-run_cascade.py                      entry point (scaffolded by `jaato-scaffold new cascade`)
-tests/                              echo-provider tests: zero cost, no credentials
+  scripts/prefetch_sentiment.py     the sentiment analyst's pre-fetch (news, StockTwits, Reddit)
+ta_cascade/                         the driver: pipeline, sessions, host tools, data, journal, memory, report
+run_cascade.py                      entry point (scaffolded by `jaato-scaffold new cascade --recoverable`)
+tests/                              unit tests + one end-to-end run on the echo set
 ```
-
-## Status
-
-Phase 0 (scaffold) and the Phase 1 skeleton are in progress; see the PR
-history and `docs/gaps.md`.

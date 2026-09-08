@@ -1,0 +1,37 @@
+# Tier-1 base for the 'portfolio_manager' stage — PROVIDER-AGNOSTIC.
+# Holds stage determinism (plugins, schemas, gates, ceilings).
+# Provider + model live in profiles/<set>/portfolio_manager.yaml, selected by JAATO_PROFILE_SET.
+name: _base_portfolio_manager
+description: final decision after the risk discussion.
+plugins: []
+max_turns: 6
+spawn_payload_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - ticker
+  - instrument_context
+  - trade_date
+  - asset_type
+  properties:
+    ticker:
+      type: string
+    instrument_context:
+      type: string
+    trade_date:
+      type: string
+      pattern: ^\d{4}-\d{2}-\d{2}$
+    asset_type:
+      type: string
+      enum:
+      - stock
+      - crypto
+    past_context:
+      type: string
+completion_payload_schema: completion_schemas/portfolio_decision.json
+completion_processors:
+- script: scripts/processors/price_fields.py
+  name: price_fields
+  max_refusals: 2
+  on_exhausted: allow
+  output: results/{ticker}/{trade_date}/live/5_portfolio/decision.md

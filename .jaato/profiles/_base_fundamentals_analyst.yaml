@@ -1,0 +1,35 @@
+# Tier-1 base for the 'fundamentals_analyst' stage — PROVIDER-AGNOSTIC.
+# Holds stage determinism (plugins, schemas, gates, ceilings).
+# Provider + model live in profiles/<set>/fundamentals_analyst.yaml, selected by JAATO_PROFILE_SET.
+name: _base_fundamentals_analyst
+description: 'fundamentals analyst stage: data tools in, a typed report out.'
+plugins: []
+max_turns: 8
+spawn_payload_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - ticker
+  - instrument_context
+  - trade_date
+  - asset_type
+  properties:
+    ticker:
+      type: string
+    instrument_context:
+      type: string
+    trade_date:
+      type: string
+      pattern: ^\d{4}-\d{2}-\d{2}$
+    asset_type:
+      type: string
+      enum:
+      - stock
+      - crypto
+completion_payload_schema: completion_schemas/analyst_report.json
+completion_processors:
+- script: scripts/processors/analyst_report.py
+  name: analyst_report
+  max_refusals: 2
+  on_exhausted: allow
+  output: results/{ticker}/{trade_date}/live/1_analysts/fundamentals.md

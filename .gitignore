@@ -6,3 +6,5 @@ __pycache__/
 .jaato/memories.jsonl
 results/
 .pytest_cache/
+.jaato/journal/
+*.egg-info/

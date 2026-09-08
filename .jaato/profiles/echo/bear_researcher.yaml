@@ -1,0 +1,15 @@
+# bear_researcher — echo set: deterministic test double, no credentials, no network.
+name: bear_researcher
+inherits:
+- _base_bear_researcher
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    response: 'Bear: echo argues the downside case.'
+env:
+  TA_CASCADE_PREFETCH: 'off'

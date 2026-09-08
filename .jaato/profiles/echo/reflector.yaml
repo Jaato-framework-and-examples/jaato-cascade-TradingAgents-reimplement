@@ -1,0 +1,21 @@
+# reflector — echo set: deterministic test double, no credentials, no network.
+name: reflector
+inherits:
+- _base_reflector
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        call_was_correct: true
+        lesson: 'echo: the call held; keep sizing modest around events.'
+        errors: []
+        warnings: []
+env:
+  TA_CASCADE_PREFETCH: 'off'

@@ -1,0 +1,14 @@
+# research_manager — openrouter set: anthropic/claude-sonnet-4.5.
+name: research_manager
+inherits:
+- _base_research_manager
+plugins: []
+model: anthropic/claude-sonnet-4.5
+provider: openrouter
+plugin_configs:
+  openrouter:
+    api_key: ${JAATO_OPENROUTER_API_KEY}
+    api_params:
+      temperature: 0.0
+      enable_thinking: true
+      thinking_level: high

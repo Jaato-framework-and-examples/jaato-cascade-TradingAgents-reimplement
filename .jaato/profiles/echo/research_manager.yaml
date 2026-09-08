@@ -1,0 +1,22 @@
+# research_manager — echo set: deterministic test double, no credentials, no network.
+name: research_manager
+inherits:
+- _base_research_manager
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        recommendation: Overweight
+        rationale: 'echo: the bull case was better supported.'
+        strategic_actions: 'echo: accumulate on weakness; revisit after earnings.'
+        errors: []
+        warnings: []
+env:
+  TA_CASCADE_PREFETCH: 'off'
