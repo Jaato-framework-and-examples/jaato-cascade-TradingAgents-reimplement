@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.jaato/logs/
+.jaato/memories.jsonl
+results/
+.pytest_cache/
