@@ -1,0 +1,12 @@
+# risk_neutral — openrouter set: anthropic/claude-sonnet-4.5.
+name: risk_neutral
+inherits:
+- _base_risk_neutral
+plugins: []
+model: anthropic/claude-sonnet-4.5
+provider: openrouter
+plugin_configs:
+  openrouter:
+    api_key: ${JAATO_OPENROUTER_API_KEY}
+    api_params:
+      temperature: 0.0

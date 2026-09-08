@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["recommendation", "rationale", "strategic_actions", "errors", "warnings"],
+  "properties": {
+    "recommendation": {"type": "string", "enum": ["Buy", "Overweight", "Hold", "Underweight", "Sell"]},
+    "rationale": {"type": "string", "description": "The deciding arguments from the debate and which reports supported them."},
+    "strategic_actions": {"type": "string", "description": "What to do now and what evidence would change the recommendation."},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

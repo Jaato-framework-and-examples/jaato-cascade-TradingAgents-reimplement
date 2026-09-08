@@ -1,0 +1,12 @@
+# bear_researcher — openrouter set: anthropic/claude-sonnet-4.5.
+name: bear_researcher
+inherits:
+- _base_bear_researcher
+plugins: []
+model: anthropic/claude-sonnet-4.5
+provider: openrouter
+plugin_configs:
+  openrouter:
+    api_key: ${JAATO_OPENROUTER_API_KEY}
+    api_params:
+      temperature: 0.0

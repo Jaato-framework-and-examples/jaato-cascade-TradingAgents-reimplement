@@ -1,0 +1,33 @@
+# fundamentals_analyst — echo set: deterministic test double, no credentials, no network.
+name: fundamentals_analyst
+inherits:
+- _base_fundamentals_analyst
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        report: Echo report for fundamentals. Echo report for fundamentals. Echo report for fundamentals.
+          Echo report for fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo
+          report for fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo report
+          for fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo report for
+          fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo report for fundamentals.
+          Echo report for fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo
+          report for fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo report
+          for fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo report for
+          fundamentals. Echo report for fundamentals. Echo report for fundamentals. Echo report for fundamentals.
+          Echo report for fundamentals.
+        stance: bullish
+        confidence: medium
+        tools_used: []
+        errors: []
+        warnings:
+        - 'echo provider: no data was fetched'
+env:
+  TA_CASCADE_PREFETCH: 'off'

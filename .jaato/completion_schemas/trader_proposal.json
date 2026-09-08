@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "reasoning", "entry_price", "stop_loss", "position_sizing", "errors", "warnings"],
+  "properties": {
+    "action": {"type": "string", "enum": ["Buy", "Hold", "Sell"]},
+    "reasoning": {"type": "string"},
+    "entry_price": {"type": ["number", "null"], "description": "Absolute price level, or null when not justified by verified data."},
+    "stop_loss": {"type": ["number", "null"], "description": "Absolute price level, never a percentage; null when not justified."},
+    "position_sizing": {"type": ["string", "null"], "description": "How much, and why; null when no position."},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

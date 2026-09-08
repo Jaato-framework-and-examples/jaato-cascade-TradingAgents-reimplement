@@ -1,0 +1,24 @@
+# trader — echo set: deterministic test double, no credentials, no network.
+name: trader
+inherits:
+- _base_trader
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    tool_call:
+      name: signal_completion
+      args:
+        action: Buy
+        reasoning: 'echo: follows the plan.'
+        entry_price: 100.0
+        stop_loss: 92.0
+        position_sizing: 'echo: half size'
+        errors: []
+        warnings: []
+env:
+  TA_CASCADE_PREFETCH: 'off'

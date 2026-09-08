@@ -1,0 +1,15 @@
+# risk_neutral — echo set: deterministic test double, no credentials, no network.
+name: risk_neutral
+inherits:
+- _base_risk_neutral
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    response: 'Neutral: echo splits the difference.'
+env:
+  TA_CASCADE_PREFETCH: 'off'

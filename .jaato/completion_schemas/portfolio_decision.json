@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["rating", "executive_summary", "investment_thesis", "price_target", "time_horizon", "errors", "warnings"],
+  "properties": {
+    "rating": {"type": "string", "enum": ["Buy", "Overweight", "Hold", "Underweight", "Sell"]},
+    "executive_summary": {"type": "string", "description": "A few sentences a reader can act on without the rest."},
+    "investment_thesis": {"type": "string", "description": "The reasoning, including what would reverse the decision."},
+    "price_target": {"type": ["number", "null"], "description": "Absolute level, or null when the evidence does not support one."},
+    "time_horizon": {"type": ["string", "null"], "description": "For example '3 months'; null when none."},
+    "errors": {"type": "array", "items": {"type": "string"}},
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  }
+}

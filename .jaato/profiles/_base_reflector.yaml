@@ -1,0 +1,19 @@
+# Tier-1 base for the 'reflector' stage — PROVIDER-AGNOSTIC.
+# Holds stage determinism (plugins, schemas, gates, ceilings).
+# Provider + model live in profiles/<set>/reflector.yaml, selected by JAATO_PROFILE_SET.
+name: _base_reflector
+description: scores a past decision against its realised outcome.
+plugins: []
+max_turns: 4
+spawn_payload_schema:
+  type: object
+  additionalProperties: false
+  required:
+  - ticker
+  - trade_date
+  properties:
+    ticker:
+      type: string
+    trade_date:
+      type: string
+completion_payload_schema: completion_schemas/reflection.json

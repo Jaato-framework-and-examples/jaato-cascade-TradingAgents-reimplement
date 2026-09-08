@@ -1,0 +1,15 @@
+# risk_conservative — echo set: deterministic test double, no credentials, no network.
+name: risk_conservative
+inherits:
+- _base_risk_conservative
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    response: 'Conservative: echo wants a smaller position.'
+env:
+  TA_CASCADE_PREFETCH: 'off'

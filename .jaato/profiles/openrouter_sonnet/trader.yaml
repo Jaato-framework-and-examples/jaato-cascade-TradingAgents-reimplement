@@ -1,0 +1,12 @@
+# trader — openrouter set: anthropic/claude-sonnet-4.5.
+name: trader
+inherits:
+- _base_trader
+plugins: []
+model: anthropic/claude-sonnet-4.5
+provider: openrouter
+plugin_configs:
+  openrouter:
+    api_key: ${JAATO_OPENROUTER_API_KEY}
+    api_params:
+      temperature: 0.0

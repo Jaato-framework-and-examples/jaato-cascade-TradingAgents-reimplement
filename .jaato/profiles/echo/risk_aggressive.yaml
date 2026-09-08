@@ -1,0 +1,15 @@
+# risk_aggressive — echo set: deterministic test double, no credentials, no network.
+name: risk_aggressive
+inherits:
+- _base_risk_aggressive
+plugins: []
+model: echo
+provider: echo
+plugin_configs:
+  echo:
+    usage:
+      prompt_tokens: 1000
+      output_tokens: 200
+    response: 'Aggressive: echo wants size.'
+env:
+  TA_CASCADE_PREFETCH: 'off'
