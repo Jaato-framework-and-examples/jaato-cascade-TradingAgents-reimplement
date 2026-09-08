@@ -4,7 +4,8 @@ This file is the working knowledge of the agent that built the repository,
 written so another agent can continue without the original conversation.
 Read it fully before changing anything. `README.md` is for humans;
 `docs/assessment.md` is the design rationale; `docs/gaps.md` is the live
-list of what is open. This file is the operational layer on top of them.
+list of what is open; `docs/size-and-complexity.md` compares this tree with
+the reference (regenerate with `scripts/measure_size.py`). This file is the operational layer on top of them.
 
 ---
 
