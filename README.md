@@ -16,6 +16,8 @@ log are written fresh. See [docs/gaps.md](docs/gaps.md) #8.
   TradingAgents is, which `jaato-scaffold` verb settled which decision, the
   primitive-by-primitive mapping, a worked slice, gaps, phasing.
 - [docs/gaps.md](docs/gaps.md) — the living gap tracker.
+- [docs/size-and-complexity.md](docs/size-and-complexity.md) — lines, complexity and
+  dependencies against the reference implementation, and how to read the ratio.
 
 ## Running
 
