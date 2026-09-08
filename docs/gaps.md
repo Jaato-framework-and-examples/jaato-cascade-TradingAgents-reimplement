@@ -44,3 +44,30 @@ take), `deferred` (out of scope for parity), `policy` (a rule, not work).
   the `mcp` version traceback (#9) and `file_edit` refusing to initialise
   without a `config_root` for its backups. Neither plugin is in any profile's
   `plugins:` list, so neither affects a stage.
+
+## Feature parity with the reference implementation
+
+The table above tracks gaps of the *port* (framework limits, decisions).
+This one tracks features the reference implementation (TradingAgents
+v0.4.2) has and this repository does not yet, so the size comparison in
+the assessment is read honestly: the reimplementation is smaller partly
+because the framework absorbed work and partly because these are not
+built. Priority is for a first production-shaped run, not for parity's
+sake. Reimplement, never copy.
+
+| # | Feature upstream | Here today | Priority | Notes |
+|---|---|---|---|---|
+| P1 | **Second price/fundamentals/news vendor (Alpha Vantage)** with a per-category vendor chain (`data_vendors`) and per-tool override (`tool_vendors`); typed vendor errors (rate-limited, not configured, no data) decide fall-through | yfinance only; one code path per function | medium | needs an API key; the chain semantics ("the configured list IS the chain, no silent fallback") are worth keeping when built |
+| P2 | **Polymarket prediction-markets tool** (keyless public search, forward-looking filter, ranked by volume) | none | low | one function in `data.py` plus a host tool on the news analyst |
+| P3 | **OHLCV file cache** with a TTL, a stale-data guard (refuse bars older than N days when the market should have traded), and a retry wrapper around yfinance | direct yfinance call under a deadline; no cache, no staleness check | medium | the staleness guard matters for correctness (a stale last bar silently mis-dates a snapshot); the cache matters for backtests over many dates |
+| P4 | **Market-data validator** producing the verified snapshot from a checked window (contiguous bars, last-bar recency) | `snapshot()` computes the numbers but does not validate the window | medium | pair with P3 |
+| P5 | **Point-in-time filtering of fundamentals and news** by publication/filing date, so a backtest sees only what was published by the analysis date | statements filtered by period end with a filing-lag note; `info` ratios flagged as current; news filtered by article date | medium | yfinance exposes no filing dates; a true fix needs a vendor that does (P1) |
+| P6 | **Global news from configured macro search queries** (a list of query strings, a lookback and a limit) | headlines from the feeds of index/rates/commodity proxy tickers | low | ours is a proxy; upstream's is a search |
+| P7 | **Interactive CLI**: questionary flow (ticker, date, analysts, depth, provider, models, thinking level, language), saved config, typed `TRADINGAGENTS_*` env overrides that fail fast on bad values | argparse only; model/provider chosen by `JAATO_PROFILE_SET` | low | jaato's TUI can attach to a running cascade for the live view; the selection flow is a small typer command when wanted |
+| P8 | **Output language** setting injected into every prompt | English only | low | one `{{language}}` param on every persona plus a base-instruction line |
+| P9 | **Azure OpenAI and Bedrock providers** (17 OpenAI-compatible specs, a capabilities table with per-model structured-output method, DeepSeek/MiniMax reasoning quirks) | jaato's 18 providers; OpenAI-family via OpenRouter | medium | gap #1 above |
+| P10 | **Benchmark by ticker suffix** (`.T` → Nikkei, `.L` → FTSE, … else SPY) and a **decision-log rotation cap** | one benchmark symbol (`RunConfig.benchmark`); unbounded log | low | both are small additions to `memory.py` / `config.py` |
+| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 22 unit tests: config, journal, memory (point-in-time), indicators, tools, gates, report, social parsing | medium | write against our own functions as each feature lands |
+| P12 | **Structured-output fallback to free text** when a model cannot bind a schema, with regex rating extraction and a `REVIEW` sentinel | the daemon re-prompts an agent that ends in prose; a stage with no payload raises `StageFailed` | n/a | deliberately different: a missing decision stops the run rather than being parsed out of prose |
+| P13 | **Checkpoint resume at every graph node**, opt-in | journal per stage and per debate turn | done | equivalent; see gap #2 |
+| P14 | **Reddit + StockTwits ingestion** | done | done | gap #14 |
