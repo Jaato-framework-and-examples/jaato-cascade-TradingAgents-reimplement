@@ -137,11 +137,23 @@ run_cascade.py             thin entry point (scaffolded originally; delegates to
                                       portfolio_decision, reflection)
   scripts/processors/*.py             2 completion gates: analyst_report.py, price_fields.py
   scripts/prefetch_sentiment.py       the sentiment analyst's four-source prefetch
-  journal/  logs/                     runtime, gitignored
+                                      NB: `.jaato/scripts/` is code the DAEMON runs inside the
+                                      runner (bounded, `ta_cascade` must be importable there).
+                                      It is not the repo's own `scripts/` at the root, below.
+  logs/  sessions/  .artifact_tracker.json
+                                      the FRAMEWORK's runtime state, gitignored.
+                                      `.jaato/` is the daemon's config_root and holds
+                                      framework assets only — never a driver product.
+
+.ta_cascade/               the DRIVER's runtime state, gitignored
+  journal/                 per-run resume journals (see RunConfig.journal_dir)
 
 tests/                     unit tests + test_pipeline_echo.py (daemon-marked)
+scripts/measure_size.py    repo tooling YOU run (never the daemon); regenerates
+                           docs/size-and-complexity.md against a reference checkout
 docs/assessment.md         the port assessment (moved from the jaato repo; framework paths refer to jaato)
 docs/gaps.md               living gap tracker with statuses and run findings
+docs/size-and-complexity.md  lines, complexity and dependencies vs the reference
 .env                       gitignored; JAATO_PROFILE_SET + provider credential (+ FRED_API_KEY)
 ```
 
