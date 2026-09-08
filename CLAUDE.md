@@ -81,6 +81,10 @@ python -m ta_cascade analyze NVDA 2026-01-15 --analysts market,news,fundamentals
 python -m ta_cascade analyze NVDA 2026-01-15 --debate-rounds 2 --risk-rounds 1 -v
 python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts market,sentiment
 #   --no-journal / --clear-journal / --no-memory / --socket PATH / --workspace DIR
+#   --display auto|board|lines   auto draws the live board on a terminal, plain lines when piped
+
+# NOTE: two cascades on one daemon starve each other (jaato#898, docs/gaps.md).
+# For a run that must not be interrupted, give it its own daemon and --socket.
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
@@ -116,7 +120,8 @@ real and all encountered or guarded against here.
 ```
 ta_cascade/                the driver (Python; the only code that talks to jaato)
   config.py                RunConfig: ticker, date, analysts, rounds, workspace, socket, journal, log, auto_start
-  sessions.py              open_stage(): THE one place a session is opened (IPCRecoveryClient recipe)
+  sessions.py              open_stage(): THE one place a session is opened (IPCRecoveryClient recipe);
+                           observing(): the read-only observer subscription. The only SDK importer.
   pipeline.py              run(): the graph as control flow; prompts; phases; StageFailed
   state.py                 RunState / DebateTurn; prompt-composition helpers; to_dict/from_dict
   journal.py               Journal: per-run JSON, load/save/clear (resume)
@@ -124,6 +129,9 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
   data.py                  market data: yfinance, FRED, StockTwits, Reddit; deadlines; UNAVAILABLE sentences
   tools.py                 host-tool specs per analyst (closures over the run's as-of date)
   report.py                report tree under results/<ticker>/<date>/
+  board.py                 BoardState: the run's progress as drawable state (pure, no renderer)
+  richboard.py             the live two-panel view; the ONLY module that imports rich
+  observer.py              cascade events -> trace lines; imports no SDK (testable daemon-free)
   cli.py, __main__.py      `python -m ta_cascade analyze ...`
 run_cascade.py             thin entry point (scaffolded originally; delegates to cli)
 

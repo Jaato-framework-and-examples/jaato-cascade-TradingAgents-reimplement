@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .jaato/logs/
 .jaato/sessions/
+.trace/
 .jaato/.artifact_tracker.json
 .jaato/memories.jsonl
 results/
