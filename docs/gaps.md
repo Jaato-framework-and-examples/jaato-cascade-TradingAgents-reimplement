@@ -109,18 +109,30 @@ daemon-side and filed upstream.
   cascade's idle ones; and the replenish loop's `idle_count()` counts slots
   the requesting tenant is forbidden to use (cross-cascade reuse is forbidden
   by design), so the pool reads "full" and never forks while `acquire_slot`
-  returns `None`. Filed as **jaato#898**. Nothing the driver can fix.
-  Mitigation available today: run on a private socket (`--socket`), as
-  `tests/test_pipeline_echo.py` already does.
+  returns `None`. Filed as **jaato#898**; nothing the driver could fix.
+  **FIXED upstream the same day** (`b92fb7d0`, "a reservation is not
+  capacity"): `target_size` is now a floor on *unreserved* idle slots, with a
+  new `max_size` ceiling (default `2 * target_size`) bounding the growth that
+  implies. Verified here after restarting the daemon on the fix — two
+  cascades run concurrently on one daemon, both completed, `pool at capacity`
+  now reads `4/4` instead of `2/2`, and zero `session.new` timeouts or
+  acquire misses. A private socket (`--socket`) is still the way to isolate a
+  run that must not contend at all, as `tests/test_pipeline_echo.py` does,
+  but it is no longer a workaround for a defect.
 - **The driver cannot even choose to wait longer.** `create_session` takes a
   `timeout` (default 60 s) but `open_session` — the facade the `cascade`
   archetype mandates — has an explicit keyword signature that does not accept
   it (verified: `TypeError: open_session() got an unexpected keyword argument
   'timeout'`). The only escape is hand-rolling the connect/create dance the
-  facade exists to own. Filed as **jaato#899**.
-- **`.jaato/` ownership**, filed earlier the same day as **jaato#896**: the
-  `explain paths` output lists what the framework writes under `config_root`
-  but never states that a tenant must not write there.
+  facade exists to own. Filed as **jaato#899**; still open as of
+  2026-09-09, and much less pressing now that #898 removed the stall it was
+  a defence against.
+- **`.jaato/` ownership**, filed the previous day as **jaato#896**: the
+  `explain paths` output listed what the framework writes under `config_root`
+  but never stated that a tenant must not write there. Fixed upstream in
+  `50ac3ab6`, so the rule this repository adopted on 2026-09-08 (the journal
+  moved to `.ta_cascade/`) is now the framework's documented one rather than
+  our inference from its behaviour.
 - **Diagnosing the above took a daemon-log dig, which is why the board
   exists.** `-v` could not have answered "what was it doing for those 60
   seconds", because the driver was blocked inside `complete()` and had
