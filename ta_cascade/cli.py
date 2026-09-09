@@ -12,6 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from .board import NullBoard
 from .config import ANALYST_KEYS, RunConfig
 from .pipeline import StageFailed, run
 
@@ -35,17 +36,65 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--no-memory", action="store_true",
                    help="neither score pending decisions nor record this one")
     a.add_argument("-v", "--verbose", action="store_true")
+    a.add_argument("--display", choices=["auto", "board", "lines"], default="auto",
+                   help="auto: draw the live board when stdout is a terminal, "
+                        "plain lines otherwise; board/lines force one")
     return p
+
+
+class _BoardLogHandler(logging.Handler):
+    """Routes log records into the board's trace panel.
+
+    A drawing board owns the terminal: ``rich.Live`` redraws its region on
+    every refresh, and a stream handler writing to the same terminal
+    interleaves with that and corrupts both.  So when the board draws, the
+    log does not go to the terminal — it goes INTO the board, which is also
+    where an operator is already looking.
+    """
+
+    def __init__(self, board) -> None:
+        super().__init__()
+        self._board = board
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._board.trace(self.format(record))
+
+
+def _build_board(mode: str):
+    """Pick the display; return ``(board, draws)``.
+
+    ``auto`` draws only when stdout is a real terminal.  Piped or redirected
+    — ``| tee``, CI, a captured log — the plain lines are kept, because that
+    output is the artifact people grep and a live view would either fight the
+    pipe or emit nothing useful into it.
+    """
+    if mode == "lines" or (mode == "auto" and not sys.stdout.isatty()):
+        return NullBoard(), False
+    from .richboard import RichBoard
+    return RichBoard(), True
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    board, draws = _build_board(args.display)
     # The root stays at INFO so a dependency's own DEBUG stream (yfinance and
     # its peewee cache emit hundreds of lines per fetch) can never bury the
     # pipeline.  ``-v`` deepens this package only: verbosity is about the
     # cascade, not about every library that happens to share the process.
-    logging.basicConfig(level=logging.INFO,
-                        format="%(levelname)s %(name)s: %(message)s")
+    if draws:
+        # rich.Live owns the terminal: anything else writing to it interleaves
+        # with the redraw and corrupts both.  So the root gets a NullHandler
+        # (nothing reaches the terminal) and THIS package's records go to the
+        # trace panel instead.  Allowlisting our own namespace rather than
+        # silencing libraries by name keeps it from needing an entry per
+        # dependency, the same rule the -v fix follows.
+        logging.basicConfig(level=logging.INFO, handlers=[logging.NullHandler()])
+        handler = _BoardLogHandler(board)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        logging.getLogger(__package__).addHandler(handler)
+    else:
+        logging.basicConfig(level=logging.INFO,
+                            format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger(__package__).setLevel(
         logging.DEBUG if args.verbose else logging.INFO)
     cfg = RunConfig(
@@ -59,8 +108,9 @@ def main(argv=None) -> int:
     if args.no_journal:
         cfg.journal_dir = None  # type: ignore[assignment]
     try:
-        state = asyncio.run(run(cfg, record_decision=not args.no_memory,
-                                resolve_pending=not args.no_memory))
+        with board:
+            state = asyncio.run(run(cfg, record_decision=not args.no_memory,
+                                    resolve_pending=not args.no_memory, board=board))
     except ConnectionError as exc:
         print(f"could not reach or start the daemon: {exc}\n"
               f"run: jaato-doctor --workspace {cfg.workspace} --env-file {cfg.env_file}",

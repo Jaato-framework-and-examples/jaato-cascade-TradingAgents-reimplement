@@ -89,6 +89,69 @@ portfolio manager). This closes the "not run yet" half of #11.
   the persona also opens with its own name. Cosmetic, in the shipped report,
   not yet fixed.
 
+## Findings from the second live run (2026-09-09, openrouter_sonnet)
+
+A repeat of `analyze NVDA 2026-09-04 --analysts market` **failed** after the
+trader with a 60 s `SessionNotConfirmed`, while an identical run an hour
+earlier had succeeded. Chased to ground in `/tmp/jaato.log`; the cause is
+daemon-side and filed upstream.
+
+- **Two cascades on one daemon starve each other.** A second cascade
+  (`/tmp/forge-run7`) was running. When our trader's session ended, our warm
+  slot was returned into a pool already at `2/2` idle and **torn down as
+  over-capacity** — 300 ms before our next stage asked for one. That stage's
+  `session.new` then received *no daemon attention for 60 s*: 166 log lines
+  in that window, every one of them RPC for the other cascade's client. It
+  released 31 s after our client gave up.
+  Two accounting defects in `server/runner_pool.py`, either sufficient alone:
+  eviction's "an affine slot displaces a PURE-IDLE resident" rule only fires
+  against *unaffiliated* residents, so a live cascade's slot loses to another
+  cascade's idle ones; and the replenish loop's `idle_count()` counts slots
+  the requesting tenant is forbidden to use (cross-cascade reuse is forbidden
+  by design), so the pool reads "full" and never forks while `acquire_slot`
+  returns `None`. Filed as **jaato#898**; nothing the driver could fix.
+  **FIXED upstream the same day** (`b92fb7d0`, "a reservation is not
+  capacity"): `target_size` is now a floor on *unreserved* idle slots, with a
+  new `max_size` ceiling (default `2 * target_size`) bounding the growth that
+  implies. Verified here after restarting the daemon on the fix — two
+  cascades run concurrently on one daemon, both completed, `pool at capacity`
+  now reads `4/4` instead of `2/2`, and zero `session.new` timeouts or
+  acquire misses. A private socket (`--socket`) is still the way to isolate a
+  run that must not contend at all, as `tests/test_pipeline_echo.py` does,
+  but it is no longer a workaround for a defect.
+- **The driver cannot even choose to wait longer.** `create_session` takes a
+  `timeout` (default 60 s) but `open_session` — the facade the `cascade`
+  archetype mandates — has an explicit keyword signature that does not accept
+  it (verified: `TypeError: open_session() got an unexpected keyword argument
+  'timeout'`). The only escape is hand-rolling the connect/create dance the
+  facade exists to own. Filed as **jaato#899**; still open as of
+  2026-09-09, and much less pressing now that #898 removed the stall it was
+  a defence against.
+- **`.jaato/` ownership**, filed the previous day as **jaato#896**: the
+  `explain paths` output listed what the framework writes under `config_root`
+  but never stated that a tenant must not write there. Fixed upstream in
+  `50ac3ab6`, so the rule this repository adopted on 2026-09-08 (the journal
+  moved to `.ta_cascade/`) is now the framework's documented one rather than
+  our inference from its behaviour.
+- **Diagnosing the above took a daemon-log dig, which is why the board
+  exists.** `-v` could not have answered "what was it doing for those 60
+  seconds", because the driver was blocked inside `complete()` and had
+  nothing to say. `ta_cascade/board.py` + `richboard.py` + `observer.py` draw
+  the pipeline live: structure from the driver (which knows the graph),
+  stage interior from the daemon's own cascade event stream (which knows
+  what the model is doing). A stalled stage now shows as a row stuck at `●`
+  with an empty trace beneath it.
+- **Host tools DO reach a cascade observer.** Probed on the live run, because
+  the reference implementation this was modelled on has runner-side tools and
+  could not answer it: `get_price_history`, `get_indicators` and
+  `get_verified_snapshot` — all executing in the *driver* process — arrive as
+  `ToolCallStartEvent` with `tool_name` set, and `AgentCreatedEvent` carries
+  `profile_name`. So the trace needs no driver-side tool instrumentation.
+  Attribution is by `session_id`: this pipeline runs two investment debaters
+  and three risk debaters concurrently under one cascade id.
+- **Still open: transcripts double the speaker label** (`Aggressive:
+  Aggressive:`), carried over from the first live run.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

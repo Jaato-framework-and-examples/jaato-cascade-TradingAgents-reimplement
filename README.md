@@ -35,6 +35,11 @@ profile in `.jaato/profiles/<set>/`; the set is selected by
 (real models) and `echo` (the framework's deterministic test double — zero
 cost, no credentials; what the tests run on).
 
+On a terminal the run draws itself: a diagram of the pipeline filling in as
+it goes, with the debates showing who holds the floor, over a trace of what
+each stage is doing inside (`--display lines` for plain output; piping picks
+that automatically).
+
 A crashed run resumes where it stopped: every stage and debate turn is
 journaled under `.ta_cascade/journal/` and cleared on success (`.jaato/`
 is the framework's config_root and stays framework-only). Decisions are
