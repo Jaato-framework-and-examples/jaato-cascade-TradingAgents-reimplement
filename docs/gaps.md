@@ -152,6 +152,39 @@ daemon-side and filed upstream.
 - **Still open: transcripts double the speaker label** (`Aggressive:
   Aggressive:`), carried over from the first live run.
 
+## Findings from OpenRouter's own logs (2026-09-09)
+
+Every stage now sends `Trading - <agent> (powered by Jaato)` as
+`X-OpenRouter-Title`, with this repository's URL as `HTTP-Referer`
+(`.jaato/profiles/openrouter_sonnet/_openrouter_app.yaml`). Confirmed
+end to end against OpenRouter's activity export, not just against the
+resolved profile.
+
+- **The attribution arrives.** Sessions before the change show App `jaato`
+  (the framework default); after it, each generation is named for its stage.
+  Because every stage is its own jaato session, OpenRouter's session filter
+  resolves to exactly one agent — so per-stage cost and token counts come out
+  of their UI with no correlation work on our side. That was not the reason
+  for doing it and is the better half of the result.
+- **One generation in twelve arrived with no title**, and OpenRouter then
+  displays the referer instead — the bare GitHub URL, which is what makes it
+  look like a different app. The row is not distinguished by provider,
+  streaming, cancellation or finish reason, and length does not separate it
+  (a 76 s / 4042-token generation kept its title; the 52 s / 2205-token one
+  did not). **No diagnosis: n=1.** If it recurs at a similar rate, capture the
+  outbound headers with a profile `trace:` block rather than inferring from
+  their logs.
+- **All twelve were served by Amazon Bedrock**, not Anthropic direct —
+  OpenRouter's routing choice, invisible from the driver. For a pipeline that
+  sets `temperature: 0.0` and requires verified numbers quoted exactly, the
+  serving provider varying between runs is an uncontrolled variable.
+  `plugin_configs.openrouter.routing` takes `only` / `order` and would pin it
+  in one line per profile. Worth considering alongside the observation that
+  the same ticker and date produced `Overweight` on one run and `Sell` on
+  another — **no evidence links the two**, and establishing whether provider
+  routing explains any of that variance needs a deliberate experiment, not
+  this pair of runs.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
