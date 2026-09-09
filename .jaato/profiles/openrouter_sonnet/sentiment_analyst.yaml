@@ -2,11 +2,12 @@
 name: sentiment_analyst
 inherits:
 - _base_sentiment_analyst
+- _openrouter_app
 plugins: []
 model: anthropic/claude-sonnet-4.5
 provider: openrouter
 plugin_configs:
   openrouter:
-    api_key: ${JAATO_OPENROUTER_API_KEY}
+    app_title: Trading - sentiment_analyst (powered by Jaato)
     api_params:
       temperature: 0.0

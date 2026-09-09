@@ -1,0 +1,20 @@
+# Shared OpenRouter identity for every stage of this set.
+#
+# Holds ONLY the keys no child overrides: the credential and the attribution
+# referer.  `api_params` deliberately stays in each stage profile — measured
+# against the framework's own discover_profiles, plugin_configs merges one
+# level deep (per key under the plugin name) and a nested dict is REPLACED,
+# so a parent `api_params` here would be silently dropped by the two stages
+# that set their own (research_manager and portfolio_manager enable
+# thinking), taking `temperature: 0.0` with it.
+#
+# http_referer and app_title become the HTTP-Referer / X-OpenRouter-Title
+# headers, which OpenRouter uses for app attribution.  Each stage sets its
+# own app_title so a run reads as its agents rather than one opaque client.
+name: _openrouter_app
+description: OpenRouter credential and app attribution shared by every stage.
+plugins: []
+plugin_configs:
+  openrouter:
+    api_key: ${JAATO_OPENROUTER_API_KEY}
+    http_referer: https://github.com/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
