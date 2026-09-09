@@ -174,16 +174,21 @@ resolved profile.
   did not). **No diagnosis: n=1.** If it recurs at a similar rate, capture the
   outbound headers with a profile `trace:` block rather than inferring from
   their logs.
-- **All twelve were served by Amazon Bedrock**, not Anthropic direct —
-  OpenRouter's routing choice, invisible from the driver. For a pipeline that
-  sets `temperature: 0.0` and requires verified numbers quoted exactly, the
-  serving provider varying between runs is an uncontrolled variable.
-  `plugin_configs.openrouter.routing` takes `only` / `order` and would pin it
-  in one line per profile. Worth considering alongside the observation that
-  the same ticker and date produced `Overweight` on one run and `Sell` on
-  another — **no evidence links the two**, and establishing whether provider
-  routing explains any of that variance needs a deliberate experiment, not
-  this pair of runs.
+- **The serving upstream is OpenRouter's choice and is invisible from here.**
+  `model: anthropic/claude-sonnet-4.5` names the model, not who runs it: in
+  the export, **every** claude-4.5-sonnet generation (34/34) was served by
+  Amazon Bedrock rather than Anthropic direct. Note what this is and is not
+  — the routing has been *stable*, and nothing observed shows it moving. The
+  exposure is that nothing *guarantees* it: an availability blip or a price
+  change could move the substrate under a pipeline built on `temperature:
+  0.0` and exact quotation, with nothing in our output to show it.
+  `plugin_configs.openrouter.routing` (`only` / `order`) would pin it for all
+  thirteen stages at once; it is written into `_openrouter_app.yaml`
+  **commented**, with the trade spelled out — pinning buys determinism and
+  pays for it with a hard failure when that upstream is down.
+  This does NOT explain the same-date `Overweight`/`Sell` divergence: both
+  runs were in the Bedrock-only window, so routing was constant across them.
+  That variance remains unexplained and needs its own experiment.
 
 ## Feature parity with the reference implementation
 
