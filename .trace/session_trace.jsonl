@@ -1,0 +1,331 @@
+[23:50:09.879] [TODO] shutdown: cleaning up (preserving plan tracking and storage)
+[23:50:09.879] [MCP:20260908_234908@research_manager] shutdown: cleaning up
+[23:50:09.987] [MEMORY] shutdown
+[23:50:09.987] [WEB_FETCH] shutdown: clearing cache
+[23:50:09.989] [CLI] shutdown: cleaning up
+[23:50:09.990] [SandboxManager] shutdown
+[23:50:09.991] [PluginRegistry] clear_authorized_paths: cleared 0 paths from sandbox_manager
+[23:50:09.991] [PluginRegistry] clear_denied_paths: cleared 0 paths from sandbox_manager
+[23:50:09.992] [REFERENCES] shutdown: cleaning up resources
+[23:50:09.992] [PluginRegistry] clear_authorized_paths: cleared 0 paths from references
+[23:50:09.993] [BACKGROUND] shutdown
+[23:50:09.995] [LSP] shutdown: cleaning up resources
+[23:50:09.996] [WEB_SEARCH] shutdown: cleaning up
+[23:50:09.996] [PROMPT_LIBRARY] shutdown
+[23:50:09.998] [CLARIFICATION] shutdown: cleaning up
+[23:50:09.998] [CALCULATOR] shutdown
+[23:50:09.999] [ARTIFACT] shutdown
+[23:50:10.001] [PERMISSION] shutdown: cleaning up
+[23:50:10.002] [MULTIMODAL] shutdown
+[23:50:10.003] [PERMISSION] shutdown: cleaning up
+[23:50:10.055] [PluginRegistry] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.055] [ARTIFACT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.056] [PluginRegistry]   -> artifact_tracker.set_workspace_path()
+[23:50:10.056] [PluginRegistry]   -> ast_search.set_workspace_path()
+[23:50:10.056] [PluginRegistry]   -> bundle.set_workspace_path()
+[23:50:10.056] [CLI] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.056] [PluginRegistry]   -> cli.set_workspace_path()
+[23:50:10.056] [PluginRegistry]   -> environment.set_workspace_path()
+[23:50:10.056] [LSP] workspace_path changed to: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.056] [PluginRegistry]   -> lsp.set_workspace_path()
+[23:50:10.056] [MCP] workspace_path changed to: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.056] [PluginRegistry]   -> mcp.set_workspace_path()
+[23:50:10.057] [MEMORY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement -> /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/memories.jsonl
+[23:50:10.057] [PluginRegistry]   -> memory.set_workspace_path()
+[23:50:10.057] [MULTIMODAL] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.057] [PluginRegistry]   -> multimodal.set_workspace_path()
+[23:50:10.057] [REFERENCES] set_workspace_path: workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, project_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.057] [REFERENCES] _reload_catalog: reloaded 0 sources from workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.057] [PluginRegistry]   -> references.set_workspace_path()
+[23:50:10.058] [TEMPLATE] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, config_root=None, templates_dir=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/templates
+[23:50:10.058] [PluginRegistry]   -> template.set_workspace_path()
+[23:50:10.058] [PluginRegistry]   -> session_ops.set_workspace_path()
+[23:50:10.058] [FILE_EDIT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.058] [PluginRegistry]   -> file_edit.set_workspace_path()
+[23:50:10.058] [PluginRegistry]   -> filesystem_query.set_workspace_path()
+[23:50:10.058] [PluginRegistry]   -> interactive_shell.set_workspace_path()
+[23:50:10.058] [NOTEBOOK] Workspace path set to: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.058] [PluginRegistry]   -> notebook.set_workspace_path()
+[23:50:10.059] [PROMPT_LIBRARY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.059] [PluginRegistry]   -> prompt_library.set_workspace_path()
+[23:50:10.059] [PluginRegistry]   -> reliability.set_workspace_path()
+[23:50:10.059] [SandboxManager] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.059] [PluginRegistry]   -> sandbox_manager.set_workspace_path()
+[23:50:10.059] [PluginRegistry]   -> service_connector.set_workspace_path()
+[23:50:10.060] [PluginRegistry]   -> subagent.set_workspace_path()
+[23:50:10.060] [WAYPOINT] set_workspace_path: workspace_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.060] [WAYPOINT] set_workspace_path: defaulted storage_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/waypoints.json
+[23:50:10.060] [PluginRegistry]   -> waypoint.set_workspace_path()
+[23:50:10.060] [PluginRegistry]   -> webhook.set_workspace_path()
+[23:50:10.060] [LSP] set_session_id: None -> '20260908_235009' (slot-scoped instance serving a new cascade session)
+[23:50:10.060] [PluginRegistry]   -> lsp.set_session_id()
+[23:50:10.060] [SandboxManager] set_session_id: 20260908_235009
+[23:50:10.061] [PluginRegistry]   -> sandbox_manager.set_session_id()
+[23:50:10.303] [PluginRegistry] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.303] [ARTIFACT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.304] [PluginRegistry]   -> artifact_tracker.set_workspace_path()
+[23:50:10.304] [PluginRegistry]   -> ast_search.set_workspace_path()
+[23:50:10.304] [PluginRegistry]   -> bundle.set_workspace_path()
+[23:50:10.304] [CLI] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.304] [PluginRegistry]   -> cli.set_workspace_path()
+[23:50:10.304] [PluginRegistry]   -> environment.set_workspace_path()
+[23:50:10.304] [PluginRegistry]   -> lsp.set_workspace_path()
+[23:50:10.305] [PluginRegistry]   -> mcp.set_workspace_path()
+[23:50:10.305] [MEMORY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement -> /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/memories.jsonl
+[23:50:10.305] [PluginRegistry]   -> memory.set_workspace_path()
+[23:50:10.305] [MULTIMODAL] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.305] [PluginRegistry]   -> multimodal.set_workspace_path()
+[23:50:10.305] [REFERENCES] set_workspace_path: workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, project_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.306] [REFERENCES] _reload_catalog: reloaded 0 sources from workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.306] [PluginRegistry]   -> references.set_workspace_path()
+[23:50:10.306] [TEMPLATE] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, config_root=None, templates_dir=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/templates
+[23:50:10.306] [PluginRegistry]   -> template.set_workspace_path()
+[23:50:10.307] [PluginRegistry]   -> session_ops.set_workspace_path()
+[23:50:10.307] [FILE_EDIT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.307] [PluginRegistry]   -> file_edit.set_workspace_path()
+[23:50:10.307] [PluginRegistry]   -> filesystem_query.set_workspace_path()
+[23:50:10.307] [PluginRegistry]   -> interactive_shell.set_workspace_path()
+[23:50:10.308] [NOTEBOOK] Workspace path set to: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.308] [PluginRegistry]   -> notebook.set_workspace_path()
+[23:50:10.308] [PROMPT_LIBRARY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.308] [PluginRegistry]   -> prompt_library.set_workspace_path()
+[23:50:10.309] [PluginRegistry]   -> reliability.set_workspace_path()
+[23:50:10.309] [SandboxManager] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.309] [PluginRegistry]   -> sandbox_manager.set_workspace_path()
+[23:50:10.309] [PluginRegistry]   -> service_connector.set_workspace_path()
+[23:50:10.309] [PluginRegistry]   -> subagent.set_workspace_path()
+[23:50:10.309] [WAYPOINT] set_workspace_path: workspace_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.309] [PluginRegistry]   -> waypoint.set_workspace_path()
+[23:50:10.310] [PluginRegistry]   -> webhook.set_workspace_path()
+[23:50:10.310] [PluginRegistry]   -> lsp.set_session_id()
+[23:50:10.310] [SandboxManager] set_session_id: 20260908_235009
+[23:50:10.310] [PluginRegistry]   -> sandbox_manager.set_session_id()
+[23:50:10.310] [PluginRegistry] Starting parallel init for plugin 'mcp'
+[23:50:10.311] [ARTIFACT] initialize: storage_path=.jaato/.artifact_tracker.json, workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.312] [ARTIFACT] set_plugin_registry: registry set
+[23:50:10.313] [PluginRegistry]  Plugin 'artifact_tracker' wired with registry
+[23:50:10.314] [PluginRegistry]  Plugin 'ast_search' wired with registry
+[23:50:10.314] [BACKGROUND] initialize
+[23:50:10.315] [MCP:20260908_235009@trader] initialize: starting background thread
+[23:50:10.315] [CALCULATOR] initialize: precision=2
+[23:50:10.316] [CLI] initialize: extra_paths=[], max_output=50000, auto_bg_threshold=10.0, workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.316] [CLI] set_plugin_registry: registry set
+[23:50:10.317] [PluginRegistry]  Plugin 'cli' wired with registry
+[23:50:10.319] [MCP:20260908_235009@trader] initialize: connected_servers=[]
+[23:50:10.320] [LSP] initialize: starting background thread
+[23:50:10.320] [LSP] initialize: connected_servers=[]
+[23:50:10.320] [PluginRegistry]  Plugin 'mcp' wired with registry
+[23:50:10.321] [MEMORY] initialize: allowed_scopes=['project', 'universal']
+[23:50:10.321] [MEMORY] initialize: storage_path=.jaato/memories.jsonl, curated_memories=1
+[23:50:10.322] [MEMORY] initialize: global_path=/home/apanoia/.jaato/memories.jsonl, global_curated_memories=1
+[23:50:10.322] [PluginRegistry]  Plugin 'memory' wired with registry
+[23:50:10.322] [MULTIMODAL] initialize: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, max_size=10.0MB
+[23:50:10.323] [PERMISSION] initialize: channel=console, allow_all=False
+[23:50:10.325] [REFERENCES] initialize: sources=0, channel=queue
+[23:50:10.326] [REFERENCES] _discover_and_load_bundles: no bundles found
+[23:50:10.326] [REFERENCES] initialize: skipping embedding provider (no bundles in workspace; will lazy-init on first compute_embedding call)
+[23:50:10.326] [REFERENCES] set_plugin_registry: registry set
+[23:50:10.326] [PluginRegistry]  Plugin 'references' wired with registry
+[23:50:10.327] [TEMPLATE@trader] initialized: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, config_root=None, templates_dir=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/templates
+[23:50:10.327] [TEMPLATE@trader] set_plugin_registry: wired with registry
+[23:50:10.327] [PluginRegistry]  Plugin 'template' wired with registry
+[23:50:10.328] [TODO@trader] initialize: storage=memory, reporter=memory
+[23:50:10.329] [PluginRegistry]  Plugin 'session_ops' wired with registry
+[23:50:10.329] [CLARIFICATION] initialize: channel=queue
+[23:50:10.329] [PluginRegistry]  Plugin 'clarification' wired with registry
+[23:50:10.332] [PluginRegistry]  Plugin 'filesystem_query' wired with registry
+[23:50:10.333] [PluginRegistry]  Plugin 'introspection' wired with registry
+[23:50:10.333] [NOTEBOOK] Initialized with backend=subprocess
+[23:50:10.334] [NOTEBOOK] set_plugin_registry: registry set
+[23:50:10.334] [PluginRegistry]  Plugin 'notebook' wired with registry
+[23:50:10.335] [PROMPT_LIBRARY] Scanning source: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/agents
+[23:50:10.337] [PROMPT_LIBRARY] Discovered prompt: research_manager from project-agents
+[23:50:10.338] [PROMPT_LIBRARY] Discovered prompt: bear_researcher from project-agents
+[23:50:10.340] [PROMPT_LIBRARY] Discovered prompt: market_analyst from project-agents
+[23:50:10.341] [PROMPT_LIBRARY] Discovered prompt: risk_aggressive from project-agents
+[23:50:10.343] [PROMPT_LIBRARY] Discovered prompt: portfolio_manager from project-agents
+[23:50:10.344] [PROMPT_LIBRARY] Discovered prompt: sentiment_analyst from project-agents
+[23:50:10.345] [PROMPT_LIBRARY] Discovered prompt: news_analyst from project-agents
+[23:50:10.347] [PROMPT_LIBRARY] Discovered prompt: bull_researcher from project-agents
+[23:50:10.348] [PROMPT_LIBRARY] Discovered prompt: risk_neutral from project-agents
+[23:50:10.350] [PROMPT_LIBRARY] Discovered prompt: trader from project-agents
+[23:50:10.351] [PROMPT_LIBRARY] Discovered prompt: fundamentals_analyst from project-agents
+[23:50:10.352] [PROMPT_LIBRARY] Discovered prompt: risk_conservative from project-agents
+[23:50:10.353] [PROMPT_LIBRARY] Discovered prompt: reflector from project-agents
+[23:50:10.353] [PROMPT_LIBRARY] Scanning source: /home/apanoia/.jaato/agents
+[23:50:10.354] [PROMPT_LIBRARY] Discovered prompt: editor-assistant from global-agents
+[23:50:10.357] [PROMPT_LIBRARY] Discovered prompt: repo-implementer from global-agents
+[23:50:10.359] [PROMPT_LIBRARY] Discovered prompt: telemetry-inspector from global-agents
+[23:50:10.359] [PROMPT_LIBRARY] Scanning source: /home/apanoia/.jaato/prompts
+[23:50:10.360] [PROMPT_LIBRARY] Discovered prompt: gen-references-publish from global
+[23:50:10.360] [PROMPT_LIBRARY] Discovered prompt: gen-references-processing from global
+[23:50:10.360] [PROMPT_LIBRARY] Discovered prompt: gen-references-indexing from global
+[23:50:10.368] [PROMPT_LIBRARY] Discovered prompt: gen-references from global
+[23:50:10.369] [PROMPT_LIBRARY] Discovered prompt: weather-spain from global
+[23:50:10.369] [PROMPT_LIBRARY] Scanning source: /home/apanoia/.claude/skills
+[23:50:10.370] [PROMPT_LIBRARY] Discovered prompt: script-security-analyzer from claude-global
+[23:50:10.371] [PROMPT_LIBRARY] Discovered prompt: jaato-apparmor-specialist from claude-global
+[23:50:10.372] [PROMPT_LIBRARY] Discovered prompt: tmux-ssh-peer-claude from claude-global
+[23:50:10.374] [PROMPT_LIBRARY] Discovered prompt: notebooklm-illustrator from claude-global
+[23:50:10.375] [PROMPT_LIBRARY] Discovered prompt: tmux-jaato-bootstrap from claude-global
+[23:50:10.375] [PROMPT_LIBRARY] Error loading prompt from /home/apanoia/.claude/skills/(retired)tmux-pair-claude.zip: 'utf-8' codec can't decode byte 0xa0 in position 10: invalid start byte
+[23:50:10.376] [PROMPT_LIBRARY] Discovered prompt: chrome-cdp from claude-global
+[23:50:10.379] [PROMPT_LIBRARY] Discovered prompt: jaato-cascade-authoring from claude-global
+[23:50:10.380] [PROMPT_LIBRARY] Discovered prompt: jaato-cascade-engineering from claude-global
+[23:50:10.380] [PROMPT_LIBRARY] initialize: workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, discovered 29 prompts
+[23:50:10.380] [PluginRegistry]  Plugin 'prompt_library' initialize: 46.1ms
+[23:50:10.380] [PROMPT_LIBRARY] set_plugin_registry: PluginRegistry
+[23:50:10.381] [PluginRegistry]  Plugin 'prompt_library' wired with registry
+[23:50:10.382] [PluginRegistry]  Plugin 'reliability' wired with registry
+[23:50:10.382] [PluginRegistry]  Plugin 'result_grep' wired with registry
+[23:50:10.383] [SandboxManager] initialize: session_id=20260908_235009, profile_paths=0
+[23:50:10.383] [SandboxManager] set_plugin_registry: registry received
+[23:50:10.383] [PluginRegistry]  Plugin 'sandbox_manager' wired with registry
+[23:50:10.384] [PluginRegistry]  Plugin 'service_connector' wired with registry
+[23:50:10.446] [PluginRegistry]  Plugin 'subagent' initialize: 61.9ms
+[23:50:10.446] [PluginRegistry]  Plugin 'subagent' wired with registry
+[23:50:10.447] [PluginRegistry]  Plugin 'waypoint' wired with registry
+[23:50:10.448] [WEB_FETCH] initialize: timeout=30, max_length=100000, bound_secrets=[], block_private=True
+[23:50:10.448] [PluginRegistry]  Plugin 'web_fetch' wired with registry
+[23:50:10.448] [WEB_SEARCH] initialize: max_results=10, region=wt-wt
+[23:50:10.448] [PluginRegistry]  Plugin 'web_search' wired with registry
+[23:50:10.450] [PluginRegistry]  Plugin 'webhook' wired with registry
+[23:50:10.450] [PluginRegistry] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.451] [ARTIFACT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.451] [PluginRegistry]   -> artifact_tracker.set_workspace_path()
+[23:50:10.451] [PluginRegistry]   -> ast_search.set_workspace_path()
+[23:50:10.451] [PluginRegistry]   -> bundle.set_workspace_path()
+[23:50:10.451] [CLI] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.451] [PluginRegistry]   -> cli.set_workspace_path()
+[23:50:10.451] [PluginRegistry]   -> environment.set_workspace_path()
+[23:50:10.451] [PluginRegistry]   -> lsp.set_workspace_path()
+[23:50:10.451] [PluginRegistry]   -> mcp.set_workspace_path()
+[23:50:10.452] [MEMORY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement -> /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/memories.jsonl
+[23:50:10.452] [PluginRegistry]   -> memory.set_workspace_path()
+[23:50:10.452] [MULTIMODAL] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.452] [PluginRegistry]   -> multimodal.set_workspace_path()
+[23:50:10.452] [REFERENCES] set_workspace_path: workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, project_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.452] [REFERENCES] _reload_catalog: reloaded 0 sources from workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.452] [PluginRegistry]   -> references.set_workspace_path()
+[23:50:10.453] [TEMPLATE@trader] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, config_root=None, templates_dir=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/templates
+[23:50:10.453] [PluginRegistry]   -> template.set_workspace_path()
+[23:50:10.453] [PluginRegistry]   -> session_ops.set_workspace_path()
+[23:50:10.453] [FILE_EDIT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.453] [PluginRegistry]   -> file_edit.set_workspace_path()
+[23:50:10.453] [PluginRegistry]   -> filesystem_query.set_workspace_path()
+[23:50:10.453] [PluginRegistry]   -> interactive_shell.set_workspace_path()
+[23:50:10.454] [NOTEBOOK] Workspace path set to: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.454] [PluginRegistry]   -> notebook.set_workspace_path()
+[23:50:10.454] [PROMPT_LIBRARY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.454] [PluginRegistry]   -> prompt_library.set_workspace_path()
+[23:50:10.454] [PluginRegistry]   -> reliability.set_workspace_path()
+[23:50:10.454] [SandboxManager] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.455] [PluginRegistry] clear_authorized_paths: cleared 0 paths from sandbox_manager
+[23:50:10.455] [PluginRegistry] clear_denied_paths: cleared 0 paths from sandbox_manager
+[23:50:10.455] [SandboxManager] Synced to registry: 0 allowed, 0 denied
+[23:50:10.455] [PluginRegistry]   -> sandbox_manager.set_workspace_path()
+[23:50:10.455] [PluginRegistry]   -> service_connector.set_workspace_path()
+[23:50:10.455] [PluginRegistry]   -> subagent.set_workspace_path()
+[23:50:10.455] [WAYPOINT] set_workspace_path: workspace_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.455] [PluginRegistry]   -> waypoint.set_workspace_path()
+[23:50:10.456] [PluginRegistry]   -> webhook.set_workspace_path()
+[23:50:10.456] [PERMISSION] initialize: channel=queue, allow_all=False
+[23:50:10.457] [MCP:20260908_235009@trader] get_tool_schemas: returning 0 schemas: []...
+[23:50:10.459] [MCP:20260908_235009@trader] get_executors: returning 1 executors (0 MCP tools from 0 servers): []...
+[23:50:10.460] [REFERENCES] get_system_instructions: auto=[], preselected=[]
+[23:50:10.460] [REFERENCES] get_system_instructions: no sources to inject
+[23:50:10.461] [TEMPLATE@trader] enrich_system_instructions called: 79086 chars, preview: You have a DYNAMIC tool system with discoverable capabilities.\n\nCAPABILITY DISCOVERY:\nWhen your curr...
+[23:50:10.461] [PluginRegistry] _emit_enrichment_notifications: 0 notifications, callback=False
+[23:50:10.464] [FormatterPipeline] register: hidden_content_filter at priority 5
+[23:50:10.465] [FormatterPipeline] register: total formatters: 1
+[23:50:10.465] [FormatterPipeline] register: diff_formatter at priority 20
+[23:50:10.465] [FormatterPipeline] register: total formatters: 2
+[23:50:10.465] [FormatterPipeline] register: notebook_output_formatter at priority 22
+[23:50:10.465] [FormatterPipeline] register: total formatters: 3
+[23:50:10.465] [FormatterPipeline] register: table_formatter at priority 25
+[23:50:10.465] [FormatterPipeline] register: total formatters: 4
+[23:50:10.465] [FormatterPipeline] register: mermaid_formatter at priority 28
+[23:50:10.465] [FormatterPipeline] register: total formatters: 5
+[23:50:10.466] [CODE_VALIDATION_FORMATTER] wire_dependencies: LSP plugin wired
+[23:50:10.466] [CODE_VALIDATION_FORMATTER] initialize: enabled=True
+[23:50:10.466] [FormatterPipeline] register: code_validation_formatter at priority 35
+[23:50:10.466] [FormatterPipeline] register: total formatters: 6
+[23:50:10.466] [FormatterPipeline] register: code_block_formatter at priority 40
+[23:50:10.466] [FormatterPipeline] register: total formatters: 7
+[23:50:10.528] [GC_BUDGET] initialize: preserve_recent_turns=5, target=60.0%, pressure=0%, continuous_mode=True
+[23:50:10.533] [PERMISSION] set_permission_hooks: on_requested=True, on_resolved=True
+[23:50:10.541] [TODO] initialize: storage=file, reporter=None
+[23:50:10.543] [PluginRegistry] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.544] [ARTIFACT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.544] [PluginRegistry]   -> artifact_tracker.set_workspace_path()
+[23:50:10.544] [PluginRegistry]   -> ast_search.set_workspace_path()
+[23:50:10.544] [PluginRegistry]   -> bundle.set_workspace_path()
+[23:50:10.544] [CLI] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.544] [PluginRegistry]   -> cli.set_workspace_path()
+[23:50:10.544] [PluginRegistry]   -> environment.set_workspace_path()
+[23:50:10.544] [PluginRegistry]   -> lsp.set_workspace_path()
+[23:50:10.544] [PluginRegistry]   -> mcp.set_workspace_path()
+[23:50:10.545] [MEMORY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement -> /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/memories.jsonl
+[23:50:10.545] [PluginRegistry]   -> memory.set_workspace_path()
+[23:50:10.545] [MULTIMODAL] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.545] [PluginRegistry]   -> multimodal.set_workspace_path()
+[23:50:10.545] [REFERENCES] set_workspace_path: workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, project_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.546] [REFERENCES] _reload_catalog: reloaded 0 sources from workspace=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.546] [PluginRegistry]   -> references.set_workspace_path()
+[23:50:10.546] [TEMPLATE@trader] set_workspace_path: base_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement, config_root=None, templates_dir=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement/.jaato/templates
+[23:50:10.546] [PluginRegistry]   -> template.set_workspace_path()
+[23:50:10.546] [PluginRegistry]   -> session_ops.set_workspace_path()
+[23:50:10.546] [FILE_EDIT] set_workspace_path: workspace_root=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.546] [PluginRegistry]   -> file_edit.set_workspace_path()
+[23:50:10.547] [PluginRegistry]   -> filesystem_query.set_workspace_path()
+[23:50:10.547] [PluginRegistry]   -> interactive_shell.set_workspace_path()
+[23:50:10.547] [NOTEBOOK] Workspace path set to: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.547] [PluginRegistry]   -> notebook.set_workspace_path()
+[23:50:10.547] [PROMPT_LIBRARY] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.547] [PluginRegistry]   -> prompt_library.set_workspace_path()
+[23:50:10.548] [PluginRegistry]   -> reliability.set_workspace_path()
+[23:50:10.548] [SandboxManager] set_workspace_path: /home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.548] [PluginRegistry] clear_authorized_paths: cleared 0 paths from sandbox_manager
+[23:50:10.548] [PluginRegistry] clear_denied_paths: cleared 0 paths from sandbox_manager
+[23:50:10.548] [SandboxManager] Synced to registry: 0 allowed, 0 denied
+[23:50:10.548] [PluginRegistry]   -> sandbox_manager.set_workspace_path()
+[23:50:10.548] [PluginRegistry]   -> service_connector.set_workspace_path()
+[23:50:10.549] [PluginRegistry]   -> subagent.set_workspace_path()
+[23:50:10.549] [WAYPOINT] set_workspace_path: workspace_path=/home/apanoia/Sources/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+[23:50:10.549] [PluginRegistry]   -> waypoint.set_workspace_path()
+[23:50:10.550] [PluginRegistry]   -> webhook.set_workspace_path()
+[23:50:11.499] [MCP:20260908_235009@trader] get_tool_schemas: returning 0 schemas: []...
+[23:50:13.821] [FormatterPipeline] register: hidden_content_filter at priority 5
+[23:50:13.822] [FormatterPipeline] register: total formatters: 1
+[23:50:13.822] [FormatterPipeline] register: diff_formatter at priority 20
+[23:50:13.823] [FormatterPipeline] register: total formatters: 2
+[23:50:13.823] [FormatterPipeline] register: notebook_output_formatter at priority 22
+[23:50:13.824] [FormatterPipeline] register: total formatters: 3
+[23:50:13.825] [FormatterPipeline] register: table_formatter at priority 25
+[23:50:13.826] [FormatterPipeline] register: total formatters: 4
+[23:50:13.827] [FormatterPipeline] register: mermaid_formatter at priority 28
+[23:50:13.828] [FormatterPipeline] register: total formatters: 5
+[23:50:13.829] [CODE_VALIDATION_FORMATTER] wire_dependencies: LSP plugin wired
+[23:50:13.829] [CODE_VALIDATION_FORMATTER] initialize: enabled=True
+[23:50:13.829] [FormatterPipeline] register: code_validation_formatter at priority 35
+[23:50:13.830] [FormatterPipeline] register: total formatters: 6
+[23:50:13.831] [FormatterPipeline] register: code_block_formatter at priority 40
+[23:50:13.832] [FormatterPipeline] register: total formatters: 7
+[23:50:26.638] [MEMORY] shutdown
+[23:50:26.638] [WEB_FETCH] shutdown: clearing cache
+[23:50:26.639] [CLI] shutdown: cleaning up
+[23:50:26.639] [SandboxManager] shutdown
+[23:50:26.639] [PluginRegistry] clear_authorized_paths: cleared 0 paths from sandbox_manager
+[23:50:26.639] [PluginRegistry] clear_denied_paths: cleared 0 paths from sandbox_manager
+[23:50:26.640] [REFERENCES] shutdown: cleaning up resources
+[23:50:26.640] [PluginRegistry] clear_authorized_paths: cleared 0 paths from references
+[23:50:26.640] [BACKGROUND] shutdown
+[23:50:26.641] [LSP] shutdown: cleaning up resources
+[23:50:26.641] [WEB_SEARCH] shutdown: cleaning up
+[23:50:26.641] [PROMPT_LIBRARY] shutdown
+[23:50:26.642] [CLARIFICATION] shutdown: cleaning up
+[23:50:26.642] [CALCULATOR] shutdown
+[23:50:26.642] [ARTIFACT] shutdown
+[23:50:26.642] [PERMISSION] shutdown: cleaning up
+[23:50:26.643] [MULTIMODAL] shutdown
+[23:50:26.643] [PERMISSION] shutdown: cleaning up

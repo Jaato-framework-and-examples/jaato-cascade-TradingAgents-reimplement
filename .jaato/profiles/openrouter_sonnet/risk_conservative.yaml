@@ -2,11 +2,12 @@
 name: risk_conservative
 inherits:
 - _base_risk_conservative
+- _openrouter_app
 plugins: []
 model: anthropic/claude-sonnet-4.5
 provider: openrouter
 plugin_configs:
   openrouter:
-    api_key: ${JAATO_OPENROUTER_API_KEY}
+    app_title: Trading - risk_conservative (powered by Jaato)
     api_params:
       temperature: 0.0
