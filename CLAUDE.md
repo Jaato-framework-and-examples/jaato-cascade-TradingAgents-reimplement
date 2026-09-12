@@ -293,10 +293,19 @@ then text is all it does.
    picks a short temp dir for the private socket.
 5. **`--stop` needs `--pid-file` and `--ipc-socket`** to find a daemon
    started with a custom pid file.
-6. **Two ERROR lines per session in the daemon log are noise here:** an
-   `mcp` package version traceback (`'types.UnionType' object has no
-   attribute 'model_validate_json'`) and `file_edit` refusing to initialise
-   without a `config_root`. Neither plugin is in any profile's `plugins:`.
+6. **ERROR lines in the daemon log that are noise here:** an `mcp` package
+   version traceback (`'types.UnionType' object has no attribute
+   'model_validate_json'`) and `file_edit` refusing to initialise without a
+   `config_root` — neither plugin is in any profile's `plugins:` — and a pair
+   whenever an observer disconnects with an event still in flight:
+   `Send error to ipc_N: Connection lost` then `Error reading from ipc_N:
+   [Errno 32] Broken pipe`. The daemon writes one more event to the observer
+   a millisecond after `cascade.unregister` removed it; the run is unaffected.
+   Seen for this driver's own observer at the end of a run (2026-09-12), and
+   about 70 times across 2026-09-05 … 09-12 from all the daemon's clients.
+   **Search every `/tmp/jaato.log*` before calling a daemon line new:** the
+   daemon rotates its log, and a count taken from the fresh file alone
+   reported this pair as "first seen today".
 7. **`jaato-scaffold new profile-set` refuses `--provider echo`** (echo is
    hidden on purpose); the echo set was written by hand (a small Python
    generator did it — see the commit that added `.jaato/profiles/echo/`).

@@ -21,6 +21,7 @@ expected to change.
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
 | 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are fetched by the sentiment prefetch alongside company and market news, all four concurrently under one 20 s deadline. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `data.gather_with_deadline`; fixture tests in `tests/test_social.py`. | done |
+| 15 | **No budget ceiling on any stage.** jaato-server 0.12.0's validator flags every profile `budget_control_absent`: no stage is bounded on usd, tokens, seconds, tool_calls or turns, so a tool-call loop stops only at the provider bill. `max_turns` bounds turns per stage but nothing else. | medium | `budget_control` in the `_base_<agent>` profiles; `limits` are MIN-WINS on inheritance, so a set profile can tighten a base ceiling but never raise it. Limits to be set from measured per-stage usage (2026-09-12 findings below). | open |
 
 Status vocabulary: `open` (nothing done), `planned` (design settled, code pending),
 `in progress`, `done` (with the commit that closed it), `accepted` (a cost we
@@ -151,6 +152,53 @@ daemon-side and filed upstream.
   and three risk debaters concurrently under one cascade id.
 - **Still open: transcripts double the speaker label** (`Aggressive:
   Aggressive:`), carried over from the first live run.
+
+## Findings from the regression check on jaato-server 0.12.0 (2026-09-12)
+
+After pulling jaato to `798878c8` (jaato-sdk 0.19.1, jaato-server 0.12.0,
+jaato-tui 0.5.1) and restarting the shared daemon. **No regressions.**
+
+| check | result |
+|---|---|
+| unit tests | 70 passed |
+| `validate` both sets | 0 errors; 40 new warnings (below) |
+| echo run on the shared daemon | exit 0, 41 s |
+| `tests/test_pipeline_echo.py` | 2 passed, 126 s |
+| live `--analysts market` NVDA 2026-09-04 | exit 0, 420 s, `Overweight`, every stage `errors: []` |
+| host-tool events reach a third-party observer | start and end events for all three tools |
+| market analyst figures vs `snapshot()` | all six quoted exactly; tool-call ids identical to 2026-09-08 |
+| daemon errors in the run window | none new |
+
+- **The stricter validator surfaced two things, neither a regression.**
+  `budget_control_absent` on every profile is a real gap — #15 above.
+  `missing_description` on the set profiles is also real, and measured
+  rather than taken on trust: the base declares a `description`, the set
+  profile omits it, and the resolved profile's `description` is `''`. So
+  `description` does NOT inherit, unlike other scalars. Harmless here — the
+  description is only advertised to a model choosing a subagent to delegate
+  to, and this pipeline never delegates.
+- **A stage finished field by field for the first time.** The market analyst
+  called `prepare_completion` nine times — one parallel batch of six (exactly
+  `analyst_report`'s six fields), a correction pass on three — then an
+  argument-less `signal_completion`. The 2026-09-08 run of the same stage, and
+  the other three gated stages today, each sent one `signal_completion`. So
+  it is a model choosing an available path (`prepare_completion` has existed
+  since jaato-server 0.6.193), not a loop. Why it chose it this time is not
+  established. No `explain` topic mentions `prepare_completion` or
+  `query_completion`; added to jaato#905.
+- **The judgement layer varied, as it has before.** Same `Overweight`
+  rating, but the trader bought at 222.5 with a stop at 210.57 (the 50-day
+  SMA) where the first live run bought at 230.36 with a stop at 220.08. The
+  price gate accepted both.
+- **A daemon ERROR pair was not new, and first looked new.** Counting the
+  current `/tmp/jaato.log` alone suggested it first appeared today; the
+  daemon rotates its log, and the rotated files show it about 70 times
+  since 2026-09-05. Recorded as known noise in `CLAUDE.md` §6.6.
+- **`explain`'s list of valid topics omits `integrations`** — a hand-typed
+  string that jaato#906 did not update. Filed as jaato#994.
+- 420 s against roughly 300 s for the earlier market-only runs. Two extra
+  model round trips from the field-by-field completion account for some of
+  it; one sample is not enough to call the framework slower.
 
 ## Feature parity with the reference implementation
 
