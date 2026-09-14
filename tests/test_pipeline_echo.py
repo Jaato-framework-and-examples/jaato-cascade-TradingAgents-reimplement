@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -135,3 +136,60 @@ def test_resume_skips_journaled_stages(cfg, monkeypatch):
     assert "market_analyst" not in opened and "sentiment_analyst" not in opened
     assert opened[:2] == ["bull_researcher", "bear_researcher"]
     assert state.portfolio_decision["rating"] == "Overweight"
+
+
+def test_budget_stop_fails_the_stage_by_name_and_resume_finishes(cfg):
+    """A stage its budget ceiling stops fails by name; the journal keeps the rest.
+
+    A copy of the workspace on the same daemon, with ``tokens: 10`` added to
+    one ``_base_<agent>`` ceiling at a time (an echo turn reports 1200).  A
+    capped debater's turn raises ``SessionEnded`` in the SDK (jaato #1007) and
+    must surface as ``StageFailed`` naming the turn, kept out of the journal;
+    a capped judge returns no payload and must surface with the daemon's
+    reason.  With the ceiling gone, the same run resumes and finishes.
+    """
+    from ta_cascade.journal import Journal
+
+    ws = cfg.workspace / "budget"
+    shutil.copytree(REPO / ".jaato", ws / ".jaato",
+                    ignore=shutil.ignore_patterns("logs", "journal", "*.jsonl"))
+    (ws / ".env").write_text("JAATO_PROFILE_SET=echo\n")
+
+    def cap(agent: str, on: bool) -> None:
+        path = ws / ".jaato" / "profiles" / f"_base_{agent}.yaml"
+        text = path.read_text()
+        if on:
+            text, n = re.subn(r"^(  limits: \{[^}]*)\}", r"\1, tokens: 10}", text, count=1, flags=re.M)
+        else:
+            text, n = re.subn(r", tokens: 10\}", "}", text, count=1)
+        assert n == 1, f"{path}: no budget_control limits line to edit"
+        path.write_text(text)
+
+    run_cfg = RunConfig("ECHO", "2026-01-15", analysts=["market"], workspace=ws, socket=cfg.socket,
+                        journal_dir=ws / "journal", results_dir=ws / "results",
+                        decision_log=ws / "decisions.jsonl", connect_timeout=180.0, auto_start=False)
+    journal = Journal(run_cfg.journal_dir, run_cfg.run_key)
+
+    def run():
+        return asyncio.run(pipeline.run(run_cfg, record_decision=False, resolve_pending=False))
+
+    cap("bull_researcher", True)
+    with pytest.raises(pipeline.StageFailed,
+                       match=r"^investment debate turn 1 \(Bull\): the session ended mid-turn \(budget_exhausted\)"):
+        run()
+    kept = journal.load()
+    assert set(kept.reports) == {"market"} and kept.investment_debate == []   # the cut turn is not journaled
+
+    cap("bull_researcher", False)
+    cap("trader", True)
+    with pytest.raises(pipeline.StageFailed,
+                       match=r"^trader: the session ended without signal_completion \(budget_exhausted\)"):
+        run()
+    kept = journal.load()
+    assert [t.speaker for t in kept.investment_debate] == ["Bull", "Bear"]
+    assert kept.research_plan and not kept.trader_proposal
+
+    cap("trader", False)
+    state = run()
+    assert state.portfolio_decision["rating"] == "Overweight"
+    assert journal.load() is None                                             # cleared on success

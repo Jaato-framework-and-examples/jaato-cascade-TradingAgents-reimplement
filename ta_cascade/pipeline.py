@@ -24,7 +24,7 @@ import logging
 import uuid
 from typing import Any, Dict, Optional, Set
 
-from jaato_sdk import AgentError, SessionCreateFailed
+from jaato_sdk import AgentError, SessionCreateFailed, SessionEnded
 
 from . import data
 from .board import NullBoard
@@ -44,9 +44,12 @@ class StageFailed(RuntimeError):
 
     Raised when a completion-gated stage returns no payload (the session
     ended without ``signal_completion``), when a payload carries
-    ``errors[]`` (the agent says it could not answer), or when a session
-    could not be created or ended in error.  The journal keeps everything
-    produced before the failure, so re-running resumes at this node.
+    ``errors[]`` (the agent says it could not answer), when a session ended
+    under a stage or a debate turn (a budget ceiling, a cancelled cascade),
+    or when a session could not be created or ended in error.  The message
+    names the stage or turn and carries the daemon's reason.  The journal
+    keeps everything produced before the failure, so re-running resumes at
+    this node.
     """
 
 
@@ -224,15 +227,51 @@ def _payload_text(payload: Optional[Dict[str, Any]], *keys: str) -> str:
     return "\n".join(f"{k}: {payload[k]}" for k in keys if payload.get(k) not in (None, ""))
 
 
-def _require(payload: Optional[Dict[str, Any]], stage: str) -> Dict[str, Any]:
+def _ended(where: str, how: str, reason: str, details: Any) -> StageFailed:
+    """The session under ``where`` ended: say where, how, and the daemon's own account."""
+    return StageFailed(f"{where}: the session ended {how} ({reason})"
+                       + (f": {details}" if details else ""))
+
+
+def _require(payload: Optional[Dict[str, Any]], stage: str, terminus: Any) -> Dict[str, Any]:
     if payload is None:
-        raise StageFailed(f"{stage}: the session ended without signal_completion")
+        raise _ended(stage, "without signal_completion", terminus.reason, terminus.details)
     errors = payload.get("errors") or []
     if errors:
         raise StageFailed(f"{stage}: the agent reported it could not answer: {errors}")
     for w in payload.get("warnings") or []:
         log.warning("%s: %s", stage, w)
     return payload
+
+
+async def _ask(session: Any, prompt: str, where: str) -> str:
+    """One debate turn.  A turn the session's end cut short fails the stage; it is never text.
+
+    ``ask`` raises :class:`SessionEnded` for it (jaato #1007); before that it
+    returned the truncated turn as if it were an answer.  Raising before the
+    caller appends the turn keeps a cut turn out of the journal, so a resume
+    replays it.
+    """
+    try:
+        return await session.ask(prompt)
+    except SessionEnded as exc:
+        raise _ended(where, "mid-turn", exc.reason, exc.details) from exc
+
+
+async def _complete(session: Any, prompt: str, where: str) -> Dict[str, Any]:
+    """One completion-gated stage, to its payload.
+
+    ``complete`` does not raise when the session ends -- ending is what it
+    waits for -- so a missing payload is explained from ``session.terminus``,
+    the daemon's reason and details (a budget stop names the dimension that
+    crossed).  It raises :class:`SessionEnded` only when the daemon says the
+    session is gone.
+    """
+    try:
+        payload = await session.complete(prompt)
+    except SessionEnded as exc:
+        raise _ended(where, "before completing", exc.reason, exc.details) from exc
+    return _require(payload, where, session.terminus)
 
 
 def _base_params(cfg: RunConfig, state: RunState) -> Dict[str, str]:
@@ -323,8 +362,7 @@ async def _analysts(cfg, state, params, tools, journal, cid, board) -> None:
         board.start(f"analyst:{key}")
         async with open_stage(cfg, profile=profile, agent=agent, params=params,
                               cascade_id=cid, client_tools=tools.get(key)) as s:
-            payload = await s.complete(ANALYST_PROMPT.format(**params))
-        state.reports[key] = _require(payload, key)
+            state.reports[key] = await _complete(s, ANALYST_PROMPT.format(**params), key)
         board.finish(f"analyst:{key}", _analyst_detail(state.reports[key]))
         journal.save(state)
 
@@ -353,7 +391,7 @@ async def _investment_debate(cfg, state, params, journal, cid, board) -> None:
                                                 argument=state.investment_debate[-1].text)
             briefed.add(side)
             board.start(f"debate:investment:{turn}")
-            text = await session.ask(prompt)
+            text = await _ask(session, prompt, f"investment debate turn {turn + 1} ({side})")
             state.investment_debate.append(DebateTurn(side, text.strip()))
             board.finish(f"debate:investment:{turn}")
             journal.save(state)
@@ -390,7 +428,7 @@ async def _judge(cfg, state, params, journal, cid, which: str, board) -> None:
     board.start(f"stage:{which}")
     async with open_stage(cfg, profile=which, agent=which, params={**params, **extra},
                           cascade_id=cid) as s:
-        payload = _require(await s.complete(prompt), which)
+        payload = await _complete(s, prompt, which)
     setattr(state, {"research_manager": "research_plan", "trader": "trader_proposal",
                     "portfolio_manager": "portfolio_decision"}[which], payload)
     board.finish(f"stage:{which}", _judge_detail(which, payload))
@@ -423,7 +461,7 @@ async def _risk_debate(cfg, state, params, journal, cid, board) -> None:
                 prompt = RISK_REBUTTAL.format(others=RunState.transcript(since))
             briefed.add(side)
             board.start(f"debate:risk:{turn}")
-            text = await sessions[side].ask(prompt)
+            text = await _ask(sessions[side], prompt, f"risk debate turn {turn + 1} ({side})")
             state.risk_debate.append(DebateTurn(side, text.strip()))
             board.finish(f"debate:risk:{turn}")
             journal.save(state)
@@ -450,7 +488,7 @@ async def _resolve_pending(cfg: RunConfig, memory: DecisionLog, cid: str, board)
         try:
             async with open_stage(cfg, profile="reflector", agent="reflector", params=params,
                                   cascade_id=cid) as s:
-                payload = _require(await s.complete(prompt), "reflector")
+                payload = await _complete(s, prompt, "reflector")
         except (StageFailed, AgentError, SessionCreateFailed) as exc:
             log.warning("reflection for %s %s failed: %s", entry.ticker, entry.trade_date, exc)
             board.finish(key, "failed", failed=True)

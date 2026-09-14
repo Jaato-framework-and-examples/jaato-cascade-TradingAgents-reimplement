@@ -88,7 +88,7 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
-.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~50-70 s, starts a private daemon
+.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~3 min, starts a private daemon
 ```
 
 Exit codes of the CLI: 0 finished; 1 a node failed (journal kept, re-run
@@ -202,7 +202,17 @@ workspace `.env` IS the session env; the driver's process env is irrelevant
 to profile resolution and secret expansion). Inheritance rules that bit or
 nearly bit: `plugins` is a union (a child cannot remove), `completion_processors`
 concatenate (remove only via `suppress_inherited_processors`), `max_turns`
-is most-restrictive-wins, scalars are child-replaces.
+is most-restrictive-wins, scalars are child-replaces. Every `_base_<agent>`
+carries a `budget_control` ceiling — per session, on `usd` (OpenRouter's
+reported cost), `tool_calls` and `seconds` (summed across the session's turns),
+with `abort` at 100%; sizing is in `docs/gaps.md` #15. Its `limits` are
+MIN-WINS too: a set profile may tighten a ceiling, never raise it. An aborted
+stage fails like any other: `StageFailed` naming the stage or debate turn and
+the daemon's reason, journal kept, re-run to resume. That holds because
+`ask()` raises `SessionEnded` for a turn a session's end cut short (jaato#1007;
+before it, the next `ask()` on that session hung forever) and `complete()`
+leaves the reason on `Session.terminus`; `pipeline._ask` / `_complete` are the
+only callers of either, and turn both into `StageFailed`.
 
 **Personas and params.** `.jaato/agents/<name>.md` = YAML frontmatter
 (`description`, `params: {name: {required, default, description}}`) + body
@@ -358,7 +368,10 @@ then text is all it does.
   file, waits for the socket, runs the whole pipeline twice (the second run
   resolves the first run's decision through the reflector and injects the
   lesson), then a resume test with a pre-seeded journal and a spy on
-  `open_stage`. `data.instrument_context` and `data.return_after` are
+  `open_stage`, then a budget test: in a copy of the workspace it caps one
+  `_base_<agent>` at a time (`tokens: 10`), and a capped debater and a capped
+  judge must each fail by name with the journal kept before the run resumes
+  and finishes. `data.instrument_context` and `data.return_after` are
   monkeypatched so the driver never touches the network either. Stops the
   daemon in teardown.
 - What echo cannot test: an analyst's real tool loop. That needs a live

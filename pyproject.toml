@@ -9,7 +9,7 @@ description = "A TradingAgents-shaped analysis pipeline reimplemented as a jaato
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "jaato-sdk",
+    "jaato-sdk>=0.22.0",  # SessionEnded / Session.terminus (jaato#1007)
     "pandas>=2.0",
     "yfinance>=0.2.50",
     "requests>=2.31",
