@@ -109,9 +109,13 @@ jaato-scaffold explain archetype cascade   # what `new cascade` writes and why
 jaato-scaffold new <archetype> ... --dry-run
 ```
 
-The skill `jaato-sdk-client` (in the jaato repo under `.claude/skills/`)
-is the condensed version of this; its three "ways a harness hangs" are all
-real and all encountered or guarded against here.
+The skill `jaato-sdk` is the condensed version of this. It ships WITH the
+framework (package data of `jaato-server`), so it cannot describe a different
+build than the one installed; apply it with `jaato-scaffold integration
+claude-code` and `jaato-doctor` reports when a copy goes stale. Its three
+"ways a harness hangs" are all real and all encountered or guarded against
+here. (It supersedes `jaato-sdk-client`, which was a file in the jaato repo
+and had to be copied by hand.)
 
 ---
 
