@@ -152,6 +152,44 @@ daemon-side and filed upstream.
 - **Still open: transcripts double the speaker label** (`Aggressive:
   Aggressive:`), carried over from the first live run.
 
+## Findings from OpenRouter's own logs (2026-09-09)
+
+Every stage now sends `Trading - <agent> (powered by Jaato)` as
+`X-OpenRouter-Title`, with this repository's URL as `HTTP-Referer`
+(`.jaato/profiles/openrouter_sonnet/_openrouter_app.yaml`). Confirmed
+end to end against OpenRouter's activity export, not just against the
+resolved profile.
+
+- **The attribution arrives.** Sessions before the change show App `jaato`
+  (the framework default); after it, each generation is named for its stage.
+  Because every stage is its own jaato session, OpenRouter's session filter
+  resolves to exactly one agent — so per-stage cost and token counts come out
+  of their UI with no correlation work on our side. That was not the reason
+  for doing it and is the better half of the result.
+- **One generation in twelve arrived with no title**, and OpenRouter then
+  displays the referer instead — the bare GitHub URL, which is what makes it
+  look like a different app. The row is not distinguished by provider,
+  streaming, cancellation or finish reason, and length does not separate it
+  (a 76 s / 4042-token generation kept its title; the 52 s / 2205-token one
+  did not). **No diagnosis: n=1.** If it recurs at a similar rate, capture the
+  outbound headers with a profile `trace:` block rather than inferring from
+  their logs.
+- **The serving upstream is OpenRouter's choice and is invisible from here.**
+  `model: anthropic/claude-sonnet-4.5` names the model, not who runs it: in
+  the export, **every** claude-4.5-sonnet generation (34/34) was served by
+  Amazon Bedrock rather than Anthropic direct. Note what this is and is not
+  — the routing has been *stable*, and nothing observed shows it moving. The
+  exposure is that nothing *guarantees* it: an availability blip or a price
+  change could move the substrate under a pipeline built on `temperature:
+  0.0` and exact quotation, with nothing in our output to show it.
+  `plugin_configs.openrouter.routing` (`only` / `order`) would pin it for all
+  thirteen stages at once; it is written into `_openrouter_app.yaml`
+  **commented**, with the trade spelled out — pinning buys determinism and
+  pays for it with a hard failure when that upstream is down.
+  This does NOT explain the same-date `Overweight`/`Sell` divergence: both
+  runs were in the Bedrock-only window, so routing was constant across them.
+  That variance remains unexplained and needs its own experiment.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

@@ -18,3 +18,32 @@ plugin_configs:
   openrouter:
     api_key: ${JAATO_OPENROUTER_API_KEY}
     http_referer: https://github.com/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
+
+    # ---------------------------------------------------------------- routing
+    # WHICH UPSTREAM SERVES THE MODEL IS OPENROUTER'S CHOICE, NOT OURS, and it
+    # is invisible from the driver: `model: anthropic/claude-sonnet-4.5` names
+    # the model, not who runs it.  In the account's 2026-09-09 activity export
+    # every claude-4.5-sonnet generation (34/34) was served by **Amazon
+    # Bedrock** — so this has been stable in practice, and nothing observed so
+    # far is evidence of it moving.
+    #
+    # It is left COMMENTED so that turning it on is a deliberate choice rather
+    # than an inherited default, because the trade is real.  This pipeline sets `temperature: 0.0` and requires the
+    # analysts to quote verified numbers exactly, so the substrate silently
+    # changing — on an availability blip, a price change, a new endpoint —
+    # would change the runs with nothing in our output to show it.  Against
+    # that: pinning one upstream means a run FAILS when that upstream is down,
+    # where routing would have survived it.  Determinism against availability.
+    #
+    # `routing` is an OPAQUE pass-through: jaato forwards every key verbatim
+    # and validates none of them, so a misspelled provider slug reaches
+    # OpenRouter unchecked.  Confirm the slug against OpenRouter's own provider
+    # list before relying on this — the export's `provider_name` column is a
+    # DISPLAY name ("Amazon Bedrock") and is not necessarily the slug.
+    #
+    # Applies to all thirteen stages at once: no stage profile sets `routing`,
+    # so the per-key merge under `openrouter` leaves this one alone.
+    #
+    # routing:
+    #   only: [<slug>]        # refuse anything else — hard determinism
+    #   order: [<slug>, ...]  # prefer, but fall back — availability first
