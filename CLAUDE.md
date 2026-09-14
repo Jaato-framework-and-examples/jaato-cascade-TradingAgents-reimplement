@@ -346,8 +346,13 @@ then text is all it does.
 - `as_of` bounds everything; `end_date` arguments are clamped to it.
 - Indicators are computed in pandas (`compute_indicators`): SMA 20/50/200,
   EMA 10, RSI 14 (Wilder), MACD 12/26/9, Bollinger 20/2, ATR 14, VWMA 20.
-  `snapshot()` is the "verified numbers" block the market analyst must
-  quote from.
+  Their periods count trading sessions; every `lookback_days` window counts
+  calendar days up to the as-of date. `snapshot()` is the "verified numbers"
+  block the market analyst must quote from: it states its window and gives
+  the high and low with their dates and the last closes with theirs.
+- Stale prices are refused, not quoted: `ohlcv`, `indicators` and
+  `snapshot` return an UNAVAILABLE sentence when the newest bar is more
+  than `RunConfig.max_stale_days` (7) calendar days before the date asked.
 - yfinance `info` is not point-in-time; `fundamentals()` says so in its
   text. Statements are filtered by period-end date, with a filing-lag note.
 - Social: `stocktwits_messages` tallies user-applied Bullish/Bearish labels;

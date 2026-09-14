@@ -17,8 +17,8 @@ def test_specs_are_well_formed(tmp_path):
 def test_handlers_clamp_to_trade_date(tmp_path, monkeypatch):
     seen = {}
 
-    def fake_ohlcv(symbol, start, end, as_of):
-        seen.update(symbol=symbol, start=start, end=end, as_of=as_of)
+    def fake_ohlcv(symbol, start, end, as_of, *, max_stale_days):
+        seen.update(symbol=symbol, start=start, end=end, as_of=as_of, max_stale_days=max_stale_days)
         return "ok"
 
     monkeypatch.setattr(data, "ohlcv", fake_ohlcv)
@@ -26,3 +26,4 @@ def test_handlers_clamp_to_trade_date(tmp_path, monkeypatch):
     tool = next(t for t in host_tools(cfg)["market"] if t["name"] == "get_price_history")
     assert tool["handler"]({"symbol": "NVDA", "start_date": "2025-12-01", "end_date": "2026-03-01"}) == "ok"
     assert seen["as_of"] == "2026-01-15"
+    assert seen["max_stale_days"] == cfg.max_stale_days == 7        # the run's limit reaches the tool
