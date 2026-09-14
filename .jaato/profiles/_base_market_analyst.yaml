@@ -5,6 +5,11 @@ name: _base_market_analyst
 description: 'market analyst stage: data tools in, a typed report out.'
 plugins: []
 max_turns: 8
+budget_control:
+  # Analyst: measured 13 tool calls (3 host tools, 9 prepare_completion, 1 signal) and 64-90 s.
+  # Sizing and mechanics: docs/gaps.md #15.
+  limits: {tool_calls: 60, usd: 1.5, seconds: 600}
+  degrade: [{at: 100, action: abort}]
 spawn_payload_schema:
   type: object
   additionalProperties: false

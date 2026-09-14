@@ -21,6 +21,7 @@ expected to change.
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
 | 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are fetched by the sentiment prefetch alongside company and market news, all four concurrently under one 20 s deadline. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `data.gather_with_deadline`; fixture tests in `tests/test_social.py`. | done |
+| 15 | **No budget ceiling on any stage.** jaato-server 0.12.0's validator flags every profile `budget_control_absent`: no stage is bounded on usd, tokens, seconds, tool_calls or turns, so a tool-call loop stops only at the provider bill. `max_turns` bounds turns per stage but nothing else. | medium | `budget_control` in each `_base_<agent>` profile, sized per stage group from measured usage with roughly 4–5× headroom: analysts `tool_calls 60 / usd 1.50 / seconds 600`, debaters `10 / 2.00 / 600`, judges and the reflector `30 / 1.50 / 480`; `abort` at 100%. Limits are per session and MIN-WINS, so a set profile can tighten a ceiling but never raise it. `usd` is OpenRouter's own reported cost per call, not an estimate, and does not advance on the echo set, which reports none. The evidence is thin — dollar figures for two stages from one run — so revisit the numbers once several runs give per-stage cost. An abort fails the run as `StageFailed` naming the stage or debate turn and the daemon's reason, journal kept; before jaato#1007 a capped debater hung the run instead (see the budget-abort findings below). | done |
 
 Status vocabulary: `open` (nothing done), `planned` (design settled, code pending),
 `in progress`, `done` (with the commit that closed it), `accepted` (a cost we
@@ -189,6 +190,87 @@ resolved profile.
   This does NOT explain the same-date `Overweight`/`Sell` divergence: both
   runs were in the Bedrock-only window, so routing was constant across them.
   That variance remains unexplained and needs its own experiment.
+
+## Findings from the regression check on jaato-server 0.12.0 (2026-09-12)
+
+After pulling jaato to `798878c8` (jaato-sdk 0.19.1, jaato-server 0.12.0,
+jaato-tui 0.5.1) and restarting the shared daemon. **No regressions.**
+
+| check | result |
+|---|---|
+| unit tests | 70 passed |
+| `validate` both sets | 0 errors; 40 new warnings (below) |
+| echo run on the shared daemon | exit 0, 41 s |
+| `tests/test_pipeline_echo.py` | 2 passed, 126 s |
+| live `--analysts market` NVDA 2026-09-04 | exit 0, 420 s, `Overweight`, every stage `errors: []` |
+| host-tool events reach a third-party observer | start and end events for all three tools |
+| market analyst figures vs `snapshot()` | all six quoted exactly; tool-call ids identical to 2026-09-08 |
+| daemon errors in the run window | none new |
+
+- **The stricter validator surfaced two things, neither a regression.**
+  `budget_control_absent` on every profile is a real gap — #15 above.
+  `missing_description` on the set profiles is also real, and measured
+  rather than taken on trust: the base declares a `description`, the set
+  profile omits it, and the resolved profile's `description` is `''`. So
+  `description` does NOT inherit, unlike other scalars. Harmless here — the
+  description is only advertised to a model choosing a subagent to delegate
+  to, and this pipeline never delegates.
+- **A stage finished field by field for the first time.** The market analyst
+  called `prepare_completion` nine times — one parallel batch of six (exactly
+  `analyst_report`'s six fields), a correction pass on three — then an
+  argument-less `signal_completion`. The 2026-09-08 run of the same stage, and
+  the other three gated stages today, each sent one `signal_completion`. So
+  it is a model choosing an available path (`prepare_completion` has existed
+  since jaato-server 0.6.193), not a loop. Why it chose it this time is not
+  established. No `explain` topic mentions `prepare_completion` or
+  `query_completion`; added to jaato#905.
+- **The judgement layer varied, as it has before.** Same `Overweight`
+  rating, but the trader bought at 222.5 with a stop at 210.57 (the 50-day
+  SMA) where the first live run bought at 230.36 with a stop at 220.08. The
+  price gate accepted both.
+- **A daemon ERROR pair was not new, and first looked new.** Counting the
+  current `/tmp/jaato.log` alone suggested it first appeared today; the
+  daemon rotates its log, and the rotated files show it about 70 times
+  since 2026-09-05. Recorded as known noise in `CLAUDE.md` §6.6.
+- **`explain`'s list of valid topics omits `integrations`** — a hand-typed
+  string that jaato#906 did not update. Filed as jaato#994.
+- 420 s against roughly 300 s for the earlier market-only runs. Two extra
+  model round trips from the field-by-field completion account for some of
+  it; one sample is not enough to call the framework slower.
+
+## Findings from forcing budget aborts (2026-09-12 … 09-14)
+
+Each `_base_<agent>` now carries a `budget_control` ceiling (#15). To see
+what an abort does to a run, one base profile at a time got `tokens: 10` on
+the echo set, where every turn reports 1200 tokens.
+
+- **A capped judge stopped cleanly.** The trader's session ended at its
+  ceiling, `complete()` returned no payload, and the run failed at the
+  trader with the journal kept (exit 1, 22 s); with the cap removed the same
+  command resumed and finished. But the message said only "ended without
+  signal_completion": the daemon's reason did not reach the driver.
+- **A capped debater hung the run.** The turn that crossed the ceiling came
+  back from `ask()` as empty text, as if it were an answer. The daemon then
+  ended the session and, as it does for every session of a cascade,
+  unloaded it and detached the driver. The driver's next `ask()` on that
+  side was answered at once with `ErrorEvent("Session not found")`, which
+  `ask()` did not listen for, so it waited forever: 12+ minutes, and not one
+  daemon log line. Reproduced with a credential-free echo script and filed
+  as jaato#1007.
+- **Fixed centrally in jaato** (`f4883e09`; jaato-sdk 0.22.0, jaato-server
+  0.15.0). `ask()` and `stream()` raise `SessionEnded`, with the reason and
+  the terminal's details, for a turn a session's end cut short and for a
+  session that is gone; `complete()` records the same on `Session.terminus`.
+- **Driver side**, `pipeline._ask` and `pipeline._complete` turn both into
+  `StageFailed` naming the stage or debate turn, with the daemon's reason
+  and details (`investment debate turn 1 (Bull): the session ended mid-turn
+  (budget_exhausted): …`). A cut turn is raised before it is appended, so it
+  never reaches the journal and a resume replays it.
+  `tests/test_pipeline_echo.py` caps a debater, then a judge, then resumes
+  to the end.
+- **`explain clients` mentions neither `SessionEnded` nor
+  `Session.terminus`**; both were read from the SDK source
+  (`jaato_sdk/client/convenience.py`).
 
 ## Feature parity with the reference implementation
 

@@ -5,6 +5,11 @@ name: _base_risk_aggressive
 description: 'aggressive posture in the risk discussion: plain turns, no completion gate.'
 plugins: []
 max_turns: 12
+budget_control:
+  # Debater: no tool calls observed; the costliest stage measured was a risk debater, $0.63 over 8 calls.
+  # Sizing and mechanics: docs/gaps.md #15.
+  limits: {tool_calls: 10, usd: 2.0, seconds: 600}
+  degrade: [{at: 100, action: abort}]
 suppress_base_instructions:
   constants: true
 spawn_payload_schema:
