@@ -110,13 +110,42 @@ def _history(symbol: str, start: dt.date, end: dt.date):
     return df[["Open", "High", "Low", "Close", "Volume"]]
 
 
+class StaleBars(LookupError):
+    """The newest bar is older than the date asked for by more than the run allows."""
+
+
+def _require_fresh(df, asked: dt.date, max_stale_days: int) -> None:
+    """Refuse a frame whose newest bar is more than ``max_stale_days`` calendar days before ``asked``.
+
+    yfinance can hand back a frame that stops well before the date asked for
+    (a delisted symbol, a feed gap), and every level computed from it would
+    then be quoted as current.  A listed stock trades at least once in any
+    week, holidays included, so the run's limit (``RunConfig.max_stale_days``)
+    tells a weekend or a holiday from missing data.
+    """
+    newest = df.index[-1].date()
+    behind = (asked - newest).days
+    if behind > max_stale_days:
+        raise StaleBars(f"the newest bar is {newest}, {behind} calendar days before {asked} "
+                        f"(the limit is {max_stale_days}): the data is stale")
+
+
+def _window(df, end: dt.date, days: int):
+    """The bars in the ``days`` calendar days up to and including ``end``."""
+    recent = df[df.index.date > end - dt.timedelta(days=int(days))]
+    if recent.empty:
+        raise LookupError(f"no bars in the {int(days)} calendar days up to {end}")
+    return recent
+
+
 # ---------------------------------------------------------------- prices
 
-def ohlcv(symbol: str, start_date: str, end_date: str, as_of: str) -> str:
-    """Daily bars as CSV, ``end_date`` clamped to ``as_of``."""
+def ohlcv(symbol: str, start_date: str, end_date: str, as_of: str, *, max_stale_days: int) -> str:
+    """Daily bars as CSV, ``end_date`` clamped to ``as_of``; refused when the newest bar is stale."""
     try:
         start, end = _date(start_date), min(_date(end_date), _date(as_of))
         df = _history(symbol, start, end)
+        _require_fresh(df, end, max_stale_days)
         head = f"# {symbol} daily OHLCV, {df.index[0].date()} to {df.index[-1].date()}, {len(df)} bars\n"
         return head + df.round(4).to_csv(index_label="Date")
     except Exception as exc:  # noqa: BLE001 — every failure becomes a sentence
@@ -151,8 +180,13 @@ def compute_indicators(df):
     return out
 
 
-def indicators(symbol: str, names: Iterable[str], as_of: str, lookback_days: int = 30) -> str:
-    """Selected indicator columns for the last ``lookback_days`` bars up to ``as_of``."""
+def indicators(symbol: str, names: Iterable[str], as_of: str, lookback_days: int = 30, *,
+               max_stale_days: int) -> str:
+    """Selected indicator columns for every bar in the ``lookback_days`` calendar days up to ``as_of``.
+
+    The window is calendar days, like every other tool's ``lookback_days``;
+    indicator periods (``sma_20``, ``rsi_14``) count trading sessions.
+    """
     names = [n.strip().lower() for n in names if n.strip()]
     unknown = [n for n in names if n not in INDICATOR_CATALOG]
     if unknown:
@@ -161,35 +195,58 @@ def indicators(symbol: str, names: Iterable[str], as_of: str, lookback_days: int
     try:
         end = _date(as_of)
         df = compute_indicators(_history(symbol, end - dt.timedelta(days=420), end))
-        tail = df[names].tail(int(lookback_days)).round(4)
+        _require_fresh(df, end, max_stale_days)
+        tail = _window(df, end, lookback_days)[names].round(4)
         legend = "\n".join(f"# {n}: {INDICATOR_CATALOG[n]}" for n in names)
         return f"{legend}\n" + tail.to_csv(index_label="Date")
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"indicators for {symbol}", exc)
 
 
-def snapshot(symbol: str, as_of: str, lookback_days: int = 30) -> str:
-    """The verified numbers a report may quote: last close, range, change, key levels."""
+RECENT_CLOSES = 10
+"""How many of the newest closes the snapshot lists, each with its date."""
+
+
+def snapshot(symbol: str, as_of: str, lookback_days: int = 30, *, max_stale_days: int) -> str:
+    """The verified numbers a report may quote, every price level with its date.
+
+    ``lookback_days`` is calendar days up to ``as_of``, the unit of every other
+    tool's ``lookback_days``.  It used to be the last N bars while the fields
+    said ``_Nd``, so a "90-day high" reached back about 128 calendar days and
+    a May high was quoted as the 90-day high in September (docs/gaps.md,
+    2026-09-14).  The high and low carry their dates for the same reason: an
+    undated low was twice cited under the wrong month.  Indicator periods
+    (``sma_20``, ``rsi_14``, ``avg_volume_20d``) count trading sessions.
+    """
     try:
         end = _date(as_of)
         df = compute_indicators(_history(symbol, end - dt.timedelta(days=420), end))
-        recent = df.tail(int(lookback_days))
+        _require_fresh(df, end, max_stale_days)
+        n = int(lookback_days)
+        recent = _window(df, end, n)
         last = df.iloc[-1]
-        first_close = float(recent["Close"].iloc[0])
+        high_at, low_at = recent["High"].idxmax(), recent["Low"].idxmin()
         facts = {
             "symbol": symbol,
             "as_of": end.isoformat(),
             "last_bar_date": df.index[-1].date().isoformat(),
             "last_close": round(float(last["Close"]), 4),
-            f"high_{lookback_days}d": round(float(recent["High"].max()), 4),
-            f"low_{lookback_days}d": round(float(recent["Low"].min()), 4),
-            f"change_{lookback_days}d_pct": round((float(last["Close"]) / first_close - 1) * 100, 2),
+            f"window_{n}d": {"from": recent.index[0].date().isoformat(),
+                             "to": recent.index[-1].date().isoformat(), "bars": len(recent)},
+            f"high_{n}d": {"value": round(float(recent.at[high_at, "High"]), 4),
+                           "date": high_at.date().isoformat()},
+            f"low_{n}d": {"value": round(float(recent.at[low_at, "Low"]), 4),
+                          "date": low_at.date().isoformat()},
+            f"change_{n}d_pct": round((float(last["Close"]) / float(recent["Close"].iloc[0]) - 1) * 100, 2),
             "sma_20": _r(last["sma_20"]), "sma_50": _r(last["sma_50"]), "sma_200": _r(last["sma_200"]),
             "rsi_14": _r(last["rsi_14"]), "atr_14": _r(last["atr_14"]),
-            "avg_volume_20d": int(recent["Volume"].tail(20).mean()),
+            "avg_volume_20d": int(df["Volume"].tail(20).mean()),
+            "recent_closes": {i.date().isoformat(): round(float(c), 4)
+                              for i, c in df["Close"].tail(RECENT_CLOSES).items()},
         }
-        return ("VERIFIED MARKET SNAPSHOT — quote these numbers exactly; do not "
-                "state other price levels as facts.\n" + json.dumps(facts, indent=1))
+        return ("VERIFIED MARKET SNAPSHOT — quote these numbers exactly, every price level with "
+                "its date; do not state other price levels as facts. Windows are calendar days "
+                "up to as_of; indicator periods are trading sessions.\n" + json.dumps(facts, indent=1))
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"verified snapshot for {symbol}", exc)
 

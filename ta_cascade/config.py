@@ -54,6 +54,11 @@ class RunConfig:
         decision_log: the decision log path (see :mod:`ta_cascade.memory`).
         holding_days: bars after the trade date used to score a decision.
         benchmark: the symbol a decision's return is measured against.
+        max_stale_days: the most calendar days the newest price bar may lag
+            the date a price tool is asked about before the tool refuses the
+            data as stale.  7: a listed stock trades at least once in any
+            week, holidays included, so a weekend or a holiday passes and a
+            feed that stopped does not.
     """
 
     ticker: str
@@ -70,6 +75,7 @@ class RunConfig:
     decision_log: Optional[Path] = None
     holding_days: int = 5
     benchmark: str = "SPY"
+    max_stale_days: int = 7
     connect_timeout: float = 120.0
     auto_start: bool = True
 

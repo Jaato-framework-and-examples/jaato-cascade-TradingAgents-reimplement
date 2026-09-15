@@ -43,10 +43,13 @@ def _spec(name: str, description: str, properties: Dict[str, Any], required: Lis
 
 
 _DATE = {"type": "string", "description": "ISO date, YYYY-MM-DD"}
+_LOOKBACK = {"type": "integer", "minimum": 5, "maximum": 120,
+             "description": "calendar days up to the as-of date (default 30)"}
 
 
 def market_tools(cfg: RunConfig) -> List[Spec]:
     as_of = cfg.trade_date
+    stale = cfg.max_stale_days
     default_start = (dt.date.fromisoformat(as_of) - dt.timedelta(days=120)).isoformat()
     return [
         _spec(
@@ -55,26 +58,29 @@ def market_tools(cfg: RunConfig) -> List[Spec]:
             {"symbol": {"type": "string"}, "start_date": _DATE, "end_date": _DATE},
             ["symbol"],
             lambda a: data.ohlcv(a["symbol"], a.get("start_date", default_start),
-                                 a.get("end_date", as_of), as_of),
+                                 a.get("end_date", as_of), as_of, max_stale_days=stale),
         ),
         _spec(
             "get_indicators",
-            "Technical indicators for the last N bars. Pass indicator names as a list; "
-            "available: " + ", ".join(data.INDICATOR_CATALOG) + ".",
+            "Technical indicators for every bar in the last N calendar days. Indicator "
+            "periods (sma_20, rsi_14, ...) count trading sessions. Pass indicator names "
+            "as a list; available: " + ", ".join(data.INDICATOR_CATALOG) + ".",
             {"symbol": {"type": "string"},
              "indicators": {"type": "array", "items": {"type": "string"}},
-             "lookback_days": {"type": "integer", "minimum": 5, "maximum": 120}},
+             "lookback_days": _LOOKBACK},
             ["symbol", "indicators"],
-            lambda a: data.indicators(a["symbol"], a["indicators"], as_of, a.get("lookback_days", 30)),
+            lambda a: data.indicators(a["symbol"], a["indicators"], as_of, a.get("lookback_days", 30),
+                                      max_stale_days=stale),
         ),
         _spec(
             "get_verified_snapshot",
-            "The verified price facts (last close, range, change, moving averages, RSI, ATR) "
-            "a report may quote as exact numbers. Call it before writing.",
-            {"symbol": {"type": "string"},
-             "lookback_days": {"type": "integer", "minimum": 5, "maximum": 120}},
+            "The verified price facts a report may quote as exact numbers: last close, the "
+            "window's high and low with their dates, change, moving averages, RSI, ATR and "
+            "the latest closes with their dates. Call it before writing.",
+            {"symbol": {"type": "string"}, "lookback_days": _LOOKBACK},
             ["symbol"],
-            lambda a: data.snapshot(a["symbol"], as_of, a.get("lookback_days", 30)),
+            lambda a: data.snapshot(a["symbol"], as_of, a.get("lookback_days", 30),
+                                    max_stale_days=stale),
         ),
     ]
 

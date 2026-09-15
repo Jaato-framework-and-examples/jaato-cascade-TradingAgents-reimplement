@@ -270,13 +270,43 @@ the echo set, where every turn reports 1200 tokens.
   to the end.
 - **`explain clients` mentions neither `SessionEnded` nor
   `Session.terminus`**; both were read from the SDK source
-  (`jaato_sdk/client/convenience.py`).
+  (`jaato_sdk/client/convenience.py`). Filed as jaato#1063.
+
+## Findings from the health checks (2026-09-13 and 09-14)
+
+Two live market-only runs on NVDA 2026-09-04 both rated `Hold`, where the
+2026-09-12 run had rated `Overweight`. In both, the market analyst wrote that
+NVDA "closed at 230.36 … a fresh breakout above the prior 90-day high of
+236.54 set on May 14", and the research manager's and the trader's warnings
+name that passage.
+
+- **The label was ours.** `snapshot()` took the last N *bars* and labelled
+  them `high_Nd`, `low_Nd` and `change_Nd_pct`. With 90 it reached back to
+  2026-04-29, about 128 calendar days, and returned `high_90d: 236.54`
+  (May 14) and `change_90d_pct: 10.09` — the report's figures exactly. Over
+  90 calendar days the high is 234.76, on 09-04 itself, and the change
+  +10.41%. `get_indicators` had the same bars-as-days window, while the news
+  and macro tools already meant calendar days.
+- **The model added two errors of its own**: a "breakout" above a level the
+  close was below, and the 189.80 low dated "July 29" (it was 06-29). The
+  snapshot carried no dates at all.
+- **Fixed.** `lookback_days` is calendar days in every tool. The snapshot
+  states its window (`from`, `to`, `bars`), gives the high and low each with
+  its date and the last ten closes with theirs, and says that indicator
+  periods count sessions. For the same date it now reads `high_90d: 234.76`
+  (2026-09-04), `low_90d: 189.80` (2026-06-29), `change_90d_pct: 10.41`.
+- **Stale prices are refused** (P4): `ohlcv`, `indicators` and `snapshot`
+  answer with a `DATA_UNAVAILABLE` sentence when the newest bar is more than
+  `RunConfig.max_stale_days` (7) calendar days before the date asked.
+- **No rate limiting seen.** The five "429"s in the session logs are
+  millisecond timestamps, so no retry wrapper was added.
 
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
 This one tracks features the reference implementation (TradingAgents
-v0.4.2) has and this repository does not yet, so the size comparison in
+main at `be952b8`, after the v0.4.0 release; still upstream main on
+2026-09-14) has and this repository does not yet, so the size comparison in
 the assessment is read honestly: the reimplementation is smaller partly
 because the framework absorbed work and partly because these are not
 built. Priority is for a first production-shaped run, not for parity's
@@ -286,15 +316,15 @@ sake. Reimplement, never copy.
 |---|---|---|---|---|
 | P1 | **Second price/fundamentals/news vendor (Alpha Vantage)** with a per-category vendor chain (`data_vendors`) and per-tool override (`tool_vendors`); typed vendor errors (rate-limited, not configured, no data) decide fall-through | yfinance only; one code path per function | medium | needs an API key; the chain semantics ("the configured list IS the chain, no silent fallback") are worth keeping when built |
 | P2 | **Polymarket prediction-markets tool** (keyless public search, forward-looking filter, ranked by volume) | none | low | one function in `data.py` plus a host tool on the news analyst |
-| P3 | **OHLCV file cache** with a TTL, a stale-data guard (refuse bars older than N days when the market should have traded), and a retry wrapper around yfinance | direct yfinance call under a deadline; no cache, no staleness check | medium | the staleness guard matters for correctness (a stale last bar silently mis-dates a snapshot); the cache matters for backtests over many dates |
-| P4 | **Market-data validator** producing the verified snapshot from a checked window (contiguous bars, last-bar recency) | `snapshot()` computes the numbers but does not validate the window | medium | pair with P3 |
+| P3 | **OHLCV file cache** with a TTL, a stale-data guard (refuse bars older than N days when the market should have traded), and a retry wrapper around yfinance | direct yfinance call under a deadline; no cache (deferred until a backtest needs one); the staleness guard landed with P4 | medium | the staleness guard matters for correctness (a stale last bar silently mis-dates a snapshot); the cache matters for backtests over many dates |
+| P4 | **Verified market snapshot** from checked rows: the latest bar on or before the date, a 10-day staleness refusal, recent closes with dates (upstream fills price gaps rather than refusing them) | a calendar-day window stating its dates, the high and low with their dates, the last ten closes with dates; bars more than `max_stale_days` (7) old are refused; no gap filling | done | an earlier version of this row said upstream validates contiguous bars; it fills gaps instead (read 2026-09-14) |
 | P5 | **Point-in-time filtering of fundamentals and news** by publication/filing date, so a backtest sees only what was published by the analysis date | statements filtered by period end with a filing-lag note; `info` ratios flagged as current; news filtered by article date | medium | yfinance exposes no filing dates; a true fix needs a vendor that does (P1) |
 | P6 | **Global news from configured macro search queries** (a list of query strings, a lookback and a limit) | headlines from the feeds of index/rates/commodity proxy tickers | low | ours is a proxy; upstream's is a search |
 | P7 | **Interactive CLI**: questionary flow (ticker, date, analysts, depth, provider, models, thinking level, language), saved config, typed `TRADINGAGENTS_*` env overrides that fail fast on bad values | argparse only; model/provider chosen by `JAATO_PROFILE_SET` | low | jaato's TUI can attach to a running cascade for the live view; the selection flow is a small typer command when wanted |
 | P8 | **Output language** setting injected into every prompt | English only | low | one `{{language}}` param on every persona plus a base-instruction line |
 | P9 | **Azure OpenAI and Bedrock providers** (17 OpenAI-compatible specs, a capabilities table with per-model structured-output method, DeepSeek/MiniMax reasoning quirks) | jaato's 18 providers; OpenAI-family via OpenRouter | medium | gap #1 above |
 | P10 | **Benchmark by ticker suffix** (`.T` → Nikkei, `.L` → FTSE, … else SPY) and a **decision-log rotation cap** | one benchmark symbol (`RunConfig.benchmark`); unbounded log | low | both are small additions to `memory.py` / `config.py` |
-| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 22 unit tests: config, journal, memory (point-in-time), indicators, tools, gates, report, social parsing | medium | write against our own functions as each feature lands |
+| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 74 unit tests (config, journal, memory point-in-time, indicators, snapshot windows and staleness, tools, gates, report, social parsing, board, observer) and 3 end-to-end | medium | write against our own functions as each feature lands |
 | P12 | **Structured-output fallback to free text** when a model cannot bind a schema, with regex rating extraction and a `REVIEW` sentinel | the daemon re-prompts an agent that ends in prose; a stage with no payload raises `StageFailed` | n/a | deliberately different: a missing decision stops the run rather than being parsed out of prose |
 | P13 | **Checkpoint resume at every graph node**, opt-in | journal per stage and per debate turn | done | equivalent; see gap #2 |
 | P14 | **Reddit + StockTwits ingestion** | done | done | gap #14 |
