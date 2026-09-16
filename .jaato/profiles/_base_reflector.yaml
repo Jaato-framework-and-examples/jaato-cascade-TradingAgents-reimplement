@@ -4,11 +4,10 @@
 name: _base_reflector
 description: scores a past decision against its realised outcome.
 plugins: []
-max_turns: 4
 budget_control:
   # Judge: 1 signal_completion observed, but field-by-field completion can take ~15 calls; 17-81 s.
   # Sizing and mechanics: docs/gaps.md #15.
-  limits: {tool_calls: 30, usd: 1.5, seconds: 480}
+  limits: {tool_calls: 30, usd: 1.5, seconds: 480, turns: 4}
   degrade: [{at: 100, action: abort}]
 spawn_payload_schema:
   type: object

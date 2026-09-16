@@ -12,6 +12,13 @@ framework via `jaato-scaffold explain …`, `jaato-scaffold new … --dry-run`,
 and a scaffolded-then-validated sample workspace, not from reading source.
 Every claim about TradingAgents carries a `file:line` into the v0.4.2 tree.
 
+> **Read with these two corrections (2026-09-16).** Where this document says
+> `max_turns`, read `budget_control.limits.turns`: jaato#1068 removed the key
+> after measuring that nothing in the framework compared it against a turn
+> counter, so the ceiling it describes never applied. And the upstream tree
+> called "v0.4.2" here is `be952b8` — main after the v0.4.0 release, which is
+> the version its own `pyproject.toml` carries; there is no v0.4.2 tag.
+
 ---
 
 ## 1. Verdict

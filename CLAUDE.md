@@ -188,7 +188,7 @@ handshake), `connect_timeout=120` (cold autostart takes 30-60 s), and
 runner slot; an observer can attach by that id). Decision rationale: the
 in-process facade applies only `model/provider/plugins/plugin_configs/
 completion_payload_schema/suppress_base_instructions` of a named profile and
-silently ignores `completion_processors`, `max_turns`, `spawn_payload_schema`,
+silently ignores `completion_processors`, `spawn_payload_schema`,
 `budget_control` — the gates this pipeline depends on. (`docs/gaps.md` #13.)
 
 **`complete()` vs `ask()`.** A completion-gated stage (one whose profile
@@ -205,8 +205,11 @@ returns half-finished work.
 workspace `.env` IS the session env; the driver's process env is irrelevant
 to profile resolution and secret expansion). Inheritance rules that bit or
 nearly bit: `plugins` is a union (a child cannot remove), `completion_processors`
-concatenate (remove only via `suppress_inherited_processors`), `max_turns`
-is most-restrictive-wins, scalars are child-replaces. Every `_base_<agent>`
+concatenate (remove only via `suppress_inherited_processors`), scalars are
+child-replaces. A stage's turn ceiling is `budget_control.limits.turns`:
+`max_turns` used to sit here and jaato#1068 removed the key, having measured
+that it was compared against a turn counter in no path of the framework.
+Every `_base_<agent>`
 carries a `budget_control` ceiling — per session, on `usd` (OpenRouter's
 reported cost), `tool_calls` and `seconds` (summed across the session's turns),
 with `abort` at 100%; sizing is in `docs/gaps.md` #15. Its `limits` are
@@ -399,7 +402,8 @@ Not done (see `docs/gaps.md` for the full table):
 1. **A run against a real model.** Put `JAATO_OPENROUTER_API_KEY` in `.env`
    (`JAATO_PROFILE_SET=openrouter_sonnet` is already there), run
    `python -m ta_cascade analyze NVDA <recent date> --analysts market -v`,
-   read `.jaato/logs/` and `results/`. Expect to tune `max_turns` per stage,
+   read `.jaato/logs/` and `results/`. Expect to tune each stage's
+   `budget_control` ceiling,
    possibly enable `api_params.strict_tools: true` on the OpenRouter set,
    and adjust persona wording where a model ignores the tool order.
 2. **Deep model for the judges.** The OpenRouter set binds Sonnet 4.5
