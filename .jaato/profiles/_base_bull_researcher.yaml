@@ -4,11 +4,10 @@
 name: _base_bull_researcher
 description: 'bull side of the investment debate: plain turns, no completion gate.'
 plugins: []
-max_turns: 12
 budget_control:
   # Debater: no tool calls observed; the costliest stage measured was a risk debater, $0.63 over 8 calls.
   # Sizing and mechanics: docs/gaps.md #15.
-  limits: {tool_calls: 10, usd: 2.0, seconds: 600}
+  limits: {tool_calls: 10, usd: 2.0, seconds: 600, turns: 12}
   degrade: [{at: 100, action: abort}]
 suppress_base_instructions:
   constants: true

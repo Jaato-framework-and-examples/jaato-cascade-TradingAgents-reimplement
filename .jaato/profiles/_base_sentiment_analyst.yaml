@@ -4,11 +4,10 @@
 name: _base_sentiment_analyst
 description: 'sentiment analyst stage: data tools in, a typed report out.'
 plugins: []
-max_turns: 8
 budget_control:
   # Analyst: measured 13 tool calls (3 host tools, 9 prepare_completion, 1 signal) and 64-90 s.
   # Sizing and mechanics: docs/gaps.md #15.
-  limits: {tool_calls: 60, usd: 1.5, seconds: 600}
+  limits: {tool_calls: 60, usd: 1.5, seconds: 600, turns: 8}
   degrade: [{at: 100, action: abort}]
 spawn_payload_schema:
   type: object

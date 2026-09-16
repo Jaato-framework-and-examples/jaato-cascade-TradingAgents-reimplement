@@ -10,7 +10,7 @@ expected to change.
 | 1 | **No native `openai`, `azure`, `bedrock` providers in jaato.** OpenAI, xAI, DeepSeek, Qwen, GLM, MiniMax, Mistral, Kimi, Groq are reached through `openrouter`; a self-hosted or third-party OpenAI-compatible endpoint through `nim` / `vllm` with a `base_url`. Azure OpenAI and Bedrock have no route. | medium | profile sets bind `openrouter` first; Azure is a base-URL + header variant of the OpenAI-compatible base class, Bedrock a new adapter. Not needed for the first cut. | open |
 | 2 | **Pipeline resume is driver code, not a framework feature.** jaato persists sessions, not pipeline position. Granularity is the driver's choice: stage-level, or finer than upstream by having one session `signal_completion` per sub-stage and be driven again on the same history (assessment §4.8). | low | `ta_cascade/journal.py`: journal per stage and per debate turn; clear on success. Sub-stage journaling (one session signalling per sub-stage) is not yet used — every analyst is one stage today. | done (stage + turn) |
 | 3 | **Provider quirks the upstream client layer carried** (DeepSeek `reasoning_content` round-trip, MiniMax `reasoning_split`, content-block flattening) are per-model checks against jaato's own quirk tables. | low–medium | smoke each model a profile set names; `quirks:` is the escape hatch. | open |
-| 4 | **Structured-output reliability on small models.** A model that never calls `signal_completion` burns `max_turns` and returns nothing. | medium | `on_exhausted: allow` on every processor; a stage whose payload never arrives raises `StageFailed` (the run stops and resumes from the journal) rather than inventing a `Hold`; `max_turns` set per stage; `strict_tools` still to be enabled per set after a live dry run. | in progress |
+| 4 | **Structured-output reliability on small models.** A model that never calls `signal_completion` burns the stage's turn ceiling and returns nothing. | medium | `on_exhausted: allow` on every processor; a stage whose payload never arrives raises `StageFailed` (the run stops and resumes from the journal) rather than inventing a `Hold`; `budget_control.limits.turns` per stage (jaato#1068 removed `max_turns`, which bounded nothing); `strict_tools` still to be enabled per set after a live dry run. | in progress |
 | 5 | **Per-stage session cost.** In-process a session is a `JaatoSession` construction; in daemon mode each stage claims a warm pool slot (~7 s). | low | the daemon transport is the decision (#13); a cold start is paid once per driver process and stages share one warm slot per cascade. | accepted |
 | 6 | **Prompt-cache locality.** Each stage is a fresh session with its own system prompt; cross-stage reuse is nil, same as upstream. | none | — | accepted |
 | 7 | **Vendor config scope.** A process-global vendor config would forbid two concurrent runs with different vendors in one process. | low | the tool factory closes over the run's `RunConfig`; no module-level singleton. | done |
@@ -21,7 +21,7 @@ expected to change.
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
 | 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are fetched by the sentiment prefetch alongside company and market news, all four concurrently under one 20 s deadline. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `data.gather_with_deadline`; fixture tests in `tests/test_social.py`. | done |
-| 15 | **No budget ceiling on any stage.** jaato-server 0.12.0's validator flags every profile `budget_control_absent`: no stage is bounded on usd, tokens, seconds, tool_calls or turns, so a tool-call loop stops only at the provider bill. `max_turns` bounds turns per stage but nothing else. | medium | `budget_control` in each `_base_<agent>` profile, sized per stage group from measured usage with roughly 4–5× headroom: analysts `tool_calls 60 / usd 1.50 / seconds 600`, debaters `10 / 2.00 / 600`, judges and the reflector `30 / 1.50 / 480`; `abort` at 100%. Limits are per session and MIN-WINS, so a set profile can tighten a ceiling but never raise it. `usd` is OpenRouter's own reported cost per call, not an estimate, and does not advance on the echo set, which reports none. The evidence is thin — dollar figures for two stages from one run — so revisit the numbers once several runs give per-stage cost. An abort fails the run as `StageFailed` naming the stage or debate turn and the daemon's reason, journal kept; before jaato#1007 a capped debater hung the run instead (see the budget-abort findings below). | done |
+| 15 | **No budget ceiling on any stage.** jaato-server 0.12.0's validator flags every profile `budget_control_absent`: no stage is bounded on usd, tokens, seconds, tool_calls or turns, so a tool-call loop stops only at the provider bill. `max_turns` was declared per stage and bounded nothing; jaato#1068 removed the key. | medium | `budget_control` in each `_base_<agent>` profile, sized per stage group from measured usage with roughly 4–5× headroom: analysts `tool_calls 60 / usd 1.50 / seconds 600 / turns 8`, debaters `10 / 2.00 / 600 / turns 12`, judges `30 / 1.50 / 480 / turns 6`, the reflector the same with `turns 4`; `abort` at 100%. The `turns` limits are the numbers `max_turns` carried before jaato#1068 removed that key. Limits are per session and MIN-WINS, so a set profile can tighten a ceiling but never raise it. `usd` is OpenRouter's own reported cost per call, not an estimate, and does not advance on the echo set, which reports none. The evidence is thin — dollar figures for two stages from one run — so revisit the numbers once several runs give per-stage cost. An abort fails the run as `StageFailed` naming the stage or debate turn and the daemon's reason, journal kept; before jaato#1007 a capped debater hung the run instead (see the budget-abort findings below). | done |
 
 Status vocabulary: `open` (nothing done), `planned` (design settled, code pending),
 `in progress`, `done` (with the commit that closed it), `accepted` (a cost we
@@ -300,6 +300,33 @@ name that passage.
   `RunConfig.max_stale_days` (7) calendar days before the date asked.
 - **No rate limiting seen.** The five "429"s in the session logs are
   millisecond timestamps, so no retry wrapper was added.
+
+## Findings from the 2026-09-16 pull and health check
+
+- **`max_turns` is gone from jaato** (#1068): it was declared, validated,
+  inherited and advertised to the model, and compared against a turn counter
+  in no path of the framework — so every per-stage turn ceiling this
+  repository has ever declared bounded nothing. The validator now warns
+  `removed_profile_key` on each profile that keeps it. The numbers moved into
+  `budget_control.limits.turns` (analysts 8, debaters 12, judges 6, the
+  reflector 4), where the `abort` rung enforces them; a turn ceiling is real
+  here for the first time.
+- **The live run stopped at the portfolio manager on an OpenRouter 402**:
+  `in_flight_budget_exhausted`, the account down to $0.85 of $750. Nothing to
+  do with this repository. After a top-up the same command resumed from the
+  journal, ran only the missing stage and finished `Overweight` in 73 s — the
+  resume path's first live exercise.
+- **The dated snapshot held against a live model.** The market report wrote
+  "a high of **236.54 on 2026-05-14** and a low of **189.80 on 2026-06-29**",
+  both correct, and named 236.54 as the 120-day high and a target above the
+  close rather than a breakout already achieved. The two runs before the fix
+  misdated that low as "July 29" and claimed the breakout.
+- Otherwise clean: 74 unit tests, the echo run in 42 s, the end-to-end suite
+  3 passed in 171 s, `validate` 0 errors, and no daemon errors beyond the
+  known observer-disconnect noise.
+- **The integration check needs both words.** `jaato-doctor` reported the
+  claude-code payload `outdated` at 0.15.0 while my own check looked only for
+  `stale`, so the refresh did not run until doctor named it.
 
 ## Feature parity with the reference implementation
 
