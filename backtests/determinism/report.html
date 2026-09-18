@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>jaato-eval sweep report</title><style>
+/* EVERY COLOUR IS A TOKEN AND THE BODY PAINTS ITS OWN GROUND.
+   A page that sets ink and leaves the background to the viewer inherits
+   whatever ground the host supplies — which, in a dark-themed browser or
+   panel, is near-black behind #1a1a1a text.  The first shipped version
+   did exactly that and was illegible on open.  So: a complete light
+   palette on bare :root, the same tokens redefined for a dark viewer, and
+   `background` stated explicitly rather than assumed. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --surface: #f6f7f8; --rule: #d8dade; --ink: #1a1a1a;
+  --muted: #5f6368; --pass: #1b7f3b; --fail: #b3261e; --blocked: #8a6d00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c; --surface: #1e2126; --rule: #333941; --ink: #e6e8eb;
+    --muted: #9aa0a6; --pass: #5fd08a; --fail: #ff8d84; --blocked: #e3c25f;
+  }
+}
+* { box-sizing: border-box; }
+body { font: 13px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+       background: var(--bg); color: var(--ink); margin: 2rem; }
+h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+.sub { color: var(--muted); margin: 0 0 1.5rem; }
+/* Inline sibling of .sub: same muted tone, no block margin, so it can sit
+   beside a number inside a table cell. */
+.qual { color: var(--muted); font-size: .85em; white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; margin-bottom: .5rem;
+        background: var(--bg); }
+th, td { border-bottom: 1px solid var(--rule); padding: .35rem .5rem;
+         text-align: left; vertical-align: top; }
+th { font-weight: 600; font-size: .78rem; text-transform: uppercase;
+     letter-spacing: .03em; color: var(--muted); white-space: nowrap;
+     background: var(--surface); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+code, .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace;
+              font-size: .82em; }
+.state-PASS { color: var(--pass); font-weight: 600; }
+.state-FAIL { color: var(--fail); font-weight: 600; }
+.state-BLOCKED { color: var(--blocked); font-weight: 600; }
+.note { color: var(--muted); font-size: .82rem; margin: .25rem 0 1.5rem;
+        max-width: 60em; }
+.wrap { overflow-x: auto; }
+@media print {
+  /* Paper is white whatever the viewer's theme is, and this block comes
+     last so it wins over the dark palette above.  Without it, printing
+     from a dark-themed browser either wastes a cartridge on the ground or
+     drops it and prints pale ink on white. */
+  :root {
+    --bg: #ffffff; --surface: #ffffff; --rule: #bfc3c8; --ink: #000000;
+    --muted: #3c4043; --pass: #14602c; --fail: #8c1d17; --blocked: #6a5400;
+  }
+  @page { size: A4 landscape; margin: 12mm; }
+  body { margin: 0; font-size: 9pt; }
+  h2 { break-after: avoid; }
+  table { break-inside: auto; }
+  tr { break-inside: avoid; }
+  thead { display: table-header-group; }
+  .wrap { overflow-x: visible; }
+}
+</style></head><body><h1>jaato-eval sweep report</h1><p class="sub">5 arm(s) · 1 task(s)</p><h2>Which configuration won</h2><div class="wrap"><table><thead><tr><th>task</th><th>profile set</th><th>pass rate</th><th>pass</th><th>fail</th><th>blocked</th><th>cost USD</th><th>tokens</th><th>det</th></tr></thead><tbody><tr><td>backtest/determinism/NVDA/2026-08-28</td><td>openrouter_sonnet</td><td class="num">0%</td><td class="num">0</td><td class="num">5</td><td class="num">0</td><td class="num">$4.1520</td><td class="num">1067797</td><td class="num">&mdash;</td></tr></tbody></table></div><h2>backtest/determinism/NVDA/2026-08-28</h2><div class="wrap"><table><thead><tr><th title="set / repeat">arm</th><th title="roll-up">state</th><th title="bound, not the set name">model</th><th title="jaato provider plugin">provider</th><th title="who the gateway routed to">upstream</th><th title="the provider-console join key">session id</th><th title="sessions the arm opened">sessions</th><th title="turns the arm&#x27;s sessions consumed">turns</th><th title="USD, summed across turns">cost</th><th title="spend against what was allowed">budget</th><th title="completion nudges drawn">nudges</th><th title="seconds, agent run only">duration</th><th title="provider finish reason">finish</th><th title="canonical hash — determinism across repeats">payload</th><th title="blocked reason, or an ungraded sign-off">notes</th><th title="script:&quot;$JAATO_EVAL_PYTHON&quot; -m ta_cascade.score">script:"$JAATO_EVAL_PYTHON" -m ta_cascade.score</th></tr></thead><tbody><tr><td>openrouter_sonnet #0</td><td class="state-FAIL">FAIL</td><td class="mono">anthropic/claude-sonnet-4.5</td><td>openrouter</td><td class="mono">—</td><td class="mono">20260918_195659</td><td>9</td><td class="num">9</td><td class="num">$0.7732</td><td>—</td><td>0/2</td><td class="num">328.3s</td><td>stop</td><td class="mono">—</td><td></td><td>FAIL</td></tr><tr><td>openrouter_sonnet #1</td><td class="state-FAIL">FAIL</td><td class="mono">anthropic/claude-sonnet-4.5</td><td>openrouter</td><td class="mono">—</td><td class="mono">20260918_200229</td><td>9</td><td class="num">9</td><td class="num">$0.9219</td><td>—</td><td>0/2</td><td class="num">337.1s</td><td>stop</td><td class="mono">—</td><td></td><td>FAIL</td></tr><tr><td>openrouter_sonnet #2</td><td class="state-FAIL">FAIL</td><td class="mono">anthropic/claude-sonnet-4.5</td><td>openrouter</td><td class="mono">—</td><td class="mono">20260918_200807</td><td>9</td><td class="num">9</td><td class="num">$0.8132</td><td>—</td><td>0/2</td><td class="num">394.0s</td><td>stop</td><td class="mono">—</td><td></td><td>FAIL</td></tr><tr><td>openrouter_sonnet #3</td><td class="state-FAIL">FAIL</td><td class="mono">anthropic/claude-sonnet-4.5</td><td>openrouter</td><td class="mono">—</td><td class="mono">20260918_201443</td><td>9</td><td class="num">9</td><td class="num">$0.8577</td><td>—</td><td>0/2</td><td class="num">384.1s</td><td>stop</td><td class="mono">—</td><td></td><td>FAIL</td></tr><tr><td>openrouter_sonnet #4</td><td class="state-FAIL">FAIL</td><td class="mono">anthropic/claude-sonnet-4.5</td><td>openrouter</td><td class="mono">—</td><td class="mono">20260918_202109</td><td>9</td><td class="num">9</td><td class="num">$0.7861</td><td>—</td><td>0/2</td><td class="num">313.7s</td><td>stop</td><td class="mono">—</td><td></td><td>FAIL</td></tr></tbody></table></div><p class="note"><strong>—</strong> means <em>not established</em>, never zero. <strong>det</strong> is the largest group of arms that agreed with each other, over every arm that ran: 100% = byte-identical across all repeats, 0% = no two arms matched. A bracketed count means some arm produced no payload, lowering the share without having disagreed; — means fewer than two arms answered, so agreement could not be established either way. A cost of — means neither the provider nor <code>.jaato/pricing.json</code> reported one; it does not mean free. Nudges of — means the count could not be read from the session log, not that none fired. <strong>upstream</strong> and the parenthetical in <strong>finish</strong> stay — until jaato #766 carries the provider's own words off the wire. <strong>session id</strong> is the provider console's own key: OpenRouter groups its Sessions view by exactly this string. For a driver arm (<code>harness.kind: driver</code>) it is the first of the arm's sessions and <strong>sessions</strong> says how many there were; the whole list is in the results file. <strong>budget</strong> names which gate applied — <em>own</em> for a profile-declared <code>budget_control</code> (such a session is on its own books and does not draw on the task pool), <em>pool</em> for the task's cascade pool, with what was already consumed when the arm arrived.</p></body></html>

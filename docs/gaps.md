@@ -370,6 +370,45 @@ this repository is its first consumer.
   which asserts on that key, had been failing on main since. Both tiers ran
   before this change went up.
 
+## The determinism study (2026-09-19): NVDA 2026-08-28 × 5
+
+The first sweep through jaato-eval on a real model (`backtests/determinism`,
+`openrouter_sonnet`, market analyst only, sequential; `results.jsonl` and
+`report.html` beside the tasks). Five arms, each a full run: 9 sessions,
+314–394 s, $0.77–0.92 by the daemon's own accounting; no errors, no ceiling
+hit. The question was whether the pipeline agrees with itself on identical
+inputs.
+
+| arm | market stance | research manager | trader | rating |
+|---|---|---|---|---|
+| 0 | bullish (medium) | Hold | Hold | **Hold** |
+| 1 | neutral | Hold | Hold | **Hold** |
+| 2 | neutral | Underweight | Sell | **Underweight** |
+| 3 | neutral | Underweight | Sell | **Underweight** |
+| 4 | neutral | Hold | Hold | **Hold** |
+
+- **The data layer is deterministic; the judgement is not.** All five market
+  reports quote the verified close (217.55) and RSI (52.34) exactly and list
+  the same three tool calls. Above that layer the rating agreed 3 of 5
+  (Hold), with two arms one notch lower — on the same report, same
+  personas, `temperature: 0.0`. Sixty per cent agreement is the number a
+  backtest's hit rate has to be read against: a single run of a cell is one
+  draw.
+- **All five were wrong against the next week.** NVDA returned +5.89 % over
+  the 5 bars to 2026-09-04 against SPY's +0.11 % (alpha +5.78 %): a Hold
+  fails the ±1 % band and an Underweight fails the sign. One cell says
+  nothing about the strategy; it says the scorer works and the pipeline is
+  not a coin that always lands the same way up.
+- **No trader numbers to compare.** Every trader answered Hold or Sell with
+  no entry price and (four of five) no stop, so the entry/stop spread the
+  earlier runs showed (222.5 vs 230.36 on the 09-04 data) could not be
+  measured here. A pilot over many dates will.
+- **The facts are in the results file.** The scorer's JSON line is kept
+  verbatim as each verdict's `evidence` (not `notes`, which is where a
+  first read looked for it), so a pilot's rows carry rating, returns and
+  alpha per cell; the table above was cross-checked by re-running the
+  scorer in the kept workspaces.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
