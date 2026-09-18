@@ -14,6 +14,7 @@ dependencies = [
     "yfinance>=0.2.50",
     "requests>=2.31",
     "rich>=13",
+    "matplotlib>=3.8",  # the chart beside report.md; driver-side only
 ]
 
 [project.optional-dependencies]

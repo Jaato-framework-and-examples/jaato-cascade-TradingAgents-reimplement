@@ -143,6 +143,10 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
   data.py                  market data: yfinance, FRED, StockTwits, Reddit; deadlines; UNAVAILABLE sentences
   tools.py                 host-tool specs per analyst (closures over the run's as-of date)
   report.py                report tree under results/<ticker>/<date>/
+  chart.py                 chart.png beside report.md: candles, SMAs, Bollinger, volume, the span's
+                           dated high/low, entry/stop/target, the rating; the holding period after
+                           the as-of date when bars exist (a backtest cell). Drawn by code from the
+                           same bars as the snapshot; the model never sees it. matplotlib, driver-side.
   board.py                 BoardState: the run's progress as drawable state (pure, no renderer)
   richboard.py             the live two-panel view; the ONLY module that imports rich
   observer.py              cascade events -> trace lines; imports no SDK (testable daemon-free)

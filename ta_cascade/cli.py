@@ -175,5 +175,8 @@ def main(argv=None) -> int:
     decision = state.portfolio_decision or {}
     print(f"{cfg.ticker} {cfg.trade_date}: {decision.get('rating', 'REVIEW')}")
     print(decision.get("executive_summary", ""))
-    print(f"report: {cfg.results_dir / cfg.ticker / cfg.trade_date / 'report.md'}")
+    root = cfg.results_dir / cfg.ticker / cfg.trade_date
+    print(f"report: {root / 'report.md'}")
+    if (root / "chart.png").exists():
+        print(f"chart:  {root / 'chart.png'}")
     return 0

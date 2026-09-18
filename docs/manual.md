@@ -407,6 +407,81 @@ strategy.
   host; per-stage spend is identifiable in the activity export by app title
   (`Trading - <agent> (powered by Jaato)`), not from the account total.
 
+## Reading the chart
+
+Every finished run draws its recommendation on the data it was made from:
+`results/<ticker>/<date>/chart.png`, linked from `report.md`. It is drawn
+by code, after the decision, from the same bars the verified snapshot comes
+from; the model never sees it. It exists so a reader can check the prose
+against the picture in seconds.
+
+![NVDA as of 2026-08-28: Hold, drawn from a real run](images/chart-nvda-2026-08-28.png)
+
+*NVDA as of 2026-08-28, arm 0 of the determinism study: a real Sonnet
+decision with a known outcome.*
+
+### What is on it
+
+- **Candles** — one per session. Green closed at or above its open, red
+  below; the thin line is the session's range, the thick body runs from
+  open to close. A tall body on a tall volume bar is a session that
+  mattered.
+- **The three lines** — SMA 20 (blue), SMA 50 (olive), SMA 200 (grey). Price
+  above all three with the lines stacked 20 over 50 over 200 is the
+  "positively aligned" uptrend the reports name. A line under the price
+  acts as support; here the 50-day sits at 208, which is where the trader
+  put the stop.
+- **The shaded band** — Bollinger, two standard deviations around the
+  20-session average. Price riding its upper edge is "extended"; the band
+  widening means volatility rising.
+- **Volume**, in millions, coloured like its candle. A red candle on the
+  tallest bar right after a green one — Aug 27 → Aug 28 here — is the
+  "failed breakout on massive volume, then a 4.6 % reversal" the decision
+  cites.
+- **The dated labels** — the span's highest high and lowest low, with their
+  dates: the levels the prose calls "the May high" (236.54, 2026-05-14)
+  and "the June low" (189.80, 2026-06-29). Any other level the text names
+  ("resistance at 225") is the analyst's choice and is not drawn.
+- **The horizontal lines** — the trader's entry (solid), stop (dashed red)
+  and the portfolio manager's target (dashed green), when the payloads
+  carry them. A Hold has no entry, and this portfolio manager withheld a
+  target, so only the stop is drawn.
+- **The corner** — ticker, as-of date, final rating.
+- **The shaded span at the right** — the sessions *after* the as-of date,
+  drawn only when they exist (a backtest cell), with their count and
+  return. Those bars never reached the model; they are what came next.
+
+### Reading this one
+
+*What the pipeline saw on 2026-08-28:* price at 217.55, above all three
+averages and with them stacked in trend order — but the day before had
+been a breakout attempt to 227.98 on the span's heaviest volume,
+immediately reversed. Momentum had rolled over (RSI down to 52, MACD
+crossing below its signal), and from 217.55 the nearest support (208) was
+4.3 % away while the nearest resistance was 3.5 % away.
+
+*What it decided:* the analyst read the technicals as bullish with medium
+confidence; the research manager weighed the failed breakout and the
+risk/reward and recommended Hold; the trader agreed, keeping a stop at
+208 for anyone already in; the portfolio manager rated **Hold**.
+
+*What happened:* the shaded span. Five sessions on, the close was 230.36 —
++5.89 % against SPY's +0.11 %. Price never came near the stop.
+
+*How the scorer read it:* a Hold is right when the excess return stays
+within ±1 %; this was +5.78 %, so **FAIL**. The call was defensible on the
+picture — the reversal candle is real, the risk/reward was as stated —
+and wrong in outcome. One cell says nothing about the strategy; it says
+what a reader can now see at a glance.
+
+### Two cautions
+
+- The chart is *output*. Nothing the pipeline reasoned about came from a
+  picture; it reasons from the snapshot's numbers, and the chart is drawn
+  from the same numbers afterwards.
+- A chart that could not be drawn (no bars, a fetch that failed) is logged
+  and the report carries no link; the decision stands.
+
 Sources: `CLAUDE.md`, `docs/assessment.md`, `docs/gaps.md`, the completion
 schemas under `.jaato/completion_schemas/`, jaato issues #1007, #1110,
 #1112, #1127, and `backtests/determinism/results.jsonl`.

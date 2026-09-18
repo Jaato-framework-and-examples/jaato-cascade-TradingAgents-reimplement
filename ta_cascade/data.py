@@ -432,6 +432,36 @@ def instrument_context(symbol: str, asset_type: str) -> str:
     return f"{symbol}; asset type: {asset_type}"
 
 
+def chart_frames(symbol: str, as_of: str, *, context_days: int, holding_days: int):
+    """``(context, outcome)`` DataFrames for the chart beside the report.
+
+    The one function here that returns frames rather than text: its consumer
+    is the driver's own chart (:mod:`ta_cascade.chart`), never the model.
+    ``context`` is every bar in the ``context_days`` calendar days up to
+    ``as_of`` with the :data:`INDICATOR_CATALOG` columns computed over a
+    longer history so the 200-session average is real at the left edge.
+    ``outcome`` is the first ``holding_days`` bars AFTER ``as_of`` — empty
+    for a run as of today, the holding period for a backtest cell.  Bars
+    after the as-of date never reach the model; they reach the reader, on
+    the picture, marked as what came after.
+    """
+    end = _date(as_of)
+    df = compute_indicators(_history(symbol, end - dt.timedelta(days=420), end))
+    context = df[df.index.date > end - dt.timedelta(days=int(context_days))]
+    later = _history_after(symbol, end, holding_days)
+    return context, later.head(int(holding_days))
+
+
+def _history_after(symbol: str, day: dt.date, holding_days: int):
+    """Bars strictly after ``day``; an empty frame when there are none yet."""
+    import pandas as pd
+    try:
+        df = _history(symbol, day + dt.timedelta(days=1), day + dt.timedelta(days=holding_days * 3 + 10))
+    except LookupError:
+        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+    return df[df.index.date > day]
+
+
 def return_after(symbol: str, trade_date: str, holding_days: int) -> Optional[Tuple[float, str]]:
     """``(return, resolution_date)`` over ``holding_days`` bars after ``trade_date``, or ``None`` if not enough bars yet."""
     try:

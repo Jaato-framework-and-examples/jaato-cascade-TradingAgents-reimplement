@@ -26,7 +26,7 @@ from typing import Any, Dict, Optional, Set
 
 from jaato_sdk import AgentError, SessionCreateFailed, SessionEnded
 
-from . import data
+from . import chart, data
 from .board import NullBoard
 from .config import RunConfig
 from .journal import Journal
@@ -345,7 +345,8 @@ async def run(cfg: RunConfig, *, record_decision: bool = True,
             board.close(f"stopped: {exc}")
             raise
 
-    root = write_report(state, cfg.results_dir)
+    # The chart first, so the report links only a picture that exists.
+    root = write_report(state, cfg.results_dir, chart=chart.render(state, cfg))
     log.info("report written to %s", root)
     if record_decision and state.portfolio_decision:
         memory.record(cfg.ticker, cfg.trade_date, state.portfolio_decision.get("rating", "REVIEW"),
