@@ -90,6 +90,12 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
 .venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~3 min, starts a private daemon
+
+# backtests: the driver as a jaato-eval ARM (harness.kind: driver, jaato#1110)
+python -m ta_cascade backtest-tasks pilot --tickers NVDA,AMD --from 2026-04-03 --to 2026-08-28 --every 7
+jaato-eval run backtests/pilot/tasks --profile-set openrouter_sonnet --socket /tmp/jaato.sock \
+    --out backtests/pilot/results.jsonl --workspaces /tmp/pilot-ws --arm-timeout 1200 --resume
+python -m ta_cascade.score NVDA 2026-08-28      # grade one cell by hand (reads ./results)
 ```
 
 Exit codes of the CLI: 0 finished; 1 a node failed (journal kept, re-run
@@ -137,8 +143,15 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
   board.py                 BoardState: the run's progress as drawable state (pure, no renderer)
   richboard.py             the live two-panel view; the ONLY module that imports rich
   observer.py              cascade events -> trace lines; imports no SDK (testable daemon-free)
-  cli.py, __main__.py      `python -m ta_cascade analyze ...`
+  contract.py              the jaato-eval driver contract (JAATO_EVAL_*): workspace, config root,
+                           socket, cascade id, params — read once; refuses a version it does not know
+  score.py                 `python -m ta_cascade.score`: grades one backtest cell against realised
+                           returns (rating direction vs alpha over holding_days); exit 0/1/75
+  backtest.py              `backtest-tasks`: writes jaato-eval task.yaml files for tickers × dates
+  cli.py, __main__.py      `python -m ta_cascade analyze ...` / `backtest-tasks ...`
 run_cascade.py             thin entry point (scaffolded originally; delegates to cli)
+backtests/<name>/          generated matrices: fixture/ (empty) + tasks/<TICKER>-<DATE>/task.yaml;
+                           results.jsonl and the report land beside them when a sweep runs
 
 .jaato/                    the workspace the daemon reads; DATA, not code
   profiles/_base_<agent>.yaml         13 provider-agnostic stage profiles (ceilings, schemas, gates)

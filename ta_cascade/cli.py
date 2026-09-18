@@ -2,18 +2,28 @@
 
 Exit codes: 0 finished; 1 a node failed (the journal keeps what was
 produced, re-run to resume); 2 the daemon could not be reached or started.
+
+Under a jaato-eval driver contract (:mod:`ta_cascade.contract`) the run
+takes its workspace, config root, socket and cascade id from the
+environment, and an unreachable daemon exits 75 instead of 2 — the code the
+contract reserves for "the environment, not the run", which the engine
+records as BLOCKED.  ``backtest-tasks`` writes the manifests such a sweep
+runs (:mod:`ta_cascade.backtest`).
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as dt
 import logging
 import shutil
 import sys
 from pathlib import Path
 
+from .backtest import date_grid, write_tasks
 from .board import NullBoard
 from .config import ANALYST_KEYS, RunConfig
+from .contract import EX_TEMPFAIL, UnknownContract, from_environment
 from .pipeline import StageFailed, run
 
 
@@ -39,7 +49,34 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--display", choices=["auto", "board", "lines"], default="auto",
                    help="auto: draw the live board when stdout is a terminal, "
                         "plain lines otherwise; board/lines force one")
+    b = sub.add_parser("backtest-tasks",
+                       help="write jaato-eval tasks for tickers × a date grid under backtests/<name>/")
+    b.add_argument("name", help="the matrix's name: backtests/<name>/tasks/<TICKER>-<DATE>/task.yaml")
+    b.add_argument("--tickers", required=True, help="comma-separated symbols")
+    b.add_argument("--from", dest="start", required=True, help="first analysis date, ISO")
+    b.add_argument("--to", dest="end", required=True, help="last analysis date, ISO (inclusive)")
+    b.add_argument("--every", type=int, default=7, help="calendar days between dates (default 7)")
+    b.add_argument("--repeats", type=int, default=1, help="arms per cell; 5 for a determinism study")
+    b.add_argument("--analysts", default="market",
+                   help="comma-separated subset of " + ",".join(ANALYST_KEYS)
+                        + " (default market: the news and social sources serve recent items only)")
+    b.add_argument("--profile-set", default="openrouter_sonnet")
+    b.add_argument("--repo", type=Path, default=Path.cwd(),
+                   help="the repository root holding .jaato/ (default: cwd)")
     return p
+
+
+def _backtest_tasks(args) -> int:
+    dates = date_grid(dt.date.fromisoformat(args.start), dt.date.fromisoformat(args.end), args.every)
+    written = write_tasks(args.repo, args.name, args.tickers.split(","), dates,
+                          repeats=args.repeats, analysts=args.analysts.split(","),
+                          profile_set=args.profile_set)
+    print(f"{len(written)} task(s) under {args.repo / 'backtests' / args.name / 'tasks'} "
+          f"({len(dates)} date(s) × {len(args.tickers.split(','))} ticker(s), repeats {args.repeats})")
+    print(f"run: jaato-eval run backtests/{args.name}/tasks --profile-set {args.profile_set} "
+          f"--socket /tmp/jaato.sock --out backtests/{args.name}/results.jsonl "
+          f"--workspaces /tmp/{args.name}-ws --arm-timeout 1200 --resume")
+    return 0
 
 
 class _BoardLogHandler(logging.Handler):
@@ -76,6 +113,13 @@ def _build_board(mode: str):
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "backtest-tasks":
+        return _backtest_tasks(args)
+    try:
+        contract = from_environment()
+    except UnknownContract as exc:
+        print(f"refusing the jaato-eval contract: {exc}", file=sys.stderr)
+        return EX_TEMPFAIL
     board, draws = _build_board(args.display)
     # The root stays at INFO so a dependency's own DEBUG stream (yfinance and
     # its peewee cache emit hundreds of lines per fetch) can never bury the
@@ -101,7 +145,13 @@ def main(argv=None) -> int:
         ticker=args.ticker, trade_date=args.trade_date, asset_type=args.asset_type,
         analysts=[s.strip() for s in args.analysts.split(",") if s.strip()],
         max_debate_rounds=args.debate_rounds, max_risk_rounds=args.risk_rounds,
-        workspace=args.workspace, env_file=args.env_file, socket=args.socket,
+        # Under the contract the engine chose these; the flags describe a run
+        # it did not start.
+        workspace=contract.workspace if contract else args.workspace,
+        env_file=args.env_file,
+        socket=(contract.socket or args.socket) if contract else args.socket,
+        config_root=contract.config_root if contract else None,
+        cascade_id=contract.cascade_id if contract else None,
     )
     if args.clear_journal and cfg.journal_dir.exists():
         shutil.rmtree(cfg.journal_dir)
@@ -115,7 +165,9 @@ def main(argv=None) -> int:
         print(f"could not reach or start the daemon: {exc}\n"
               f"run: jaato-doctor --workspace {cfg.workspace} --env-file {cfg.env_file}",
               file=sys.stderr)
-        return 2
+        # An engine-run arm whose daemon is gone learned nothing about the
+        # configuration under test: BLOCKED (75), not a failed run (2).
+        return EX_TEMPFAIL if contract else 2
     except StageFailed as exc:
         print(f"pipeline stopped: {exc}\nre-run the same command to resume from the journal.",
               file=sys.stderr)

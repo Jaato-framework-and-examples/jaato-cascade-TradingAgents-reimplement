@@ -68,5 +68,8 @@ def test_the_shared_identity_carries_no_api_params():
     spec = yaml.safe_load((SET / f"{SHARED}.yaml").read_text())
     openrouter = spec["plugin_configs"]["openrouter"]
     assert "api_params" not in openrouter
-    assert openrouter["api_key"].startswith("${")        # expanded daemon-side
+    # A secret URI resolved daemon-side, never an env var read from the
+    # workspace .env: a jaato-eval driver arm's .env carries only
+    # JAATO_PROFILE_SET (PR #13).
+    assert openrouter["api_key"].startswith("pass://")
     assert openrouter["http_referer"].startswith("https://")

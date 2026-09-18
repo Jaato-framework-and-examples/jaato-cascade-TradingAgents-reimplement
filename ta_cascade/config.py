@@ -36,8 +36,17 @@ class RunConfig:
         analysts: subset of :data:`ANALYST_KEYS`, in run order.
         max_debate_rounds: bull/bear rounds; each round is one turn per side.
         max_risk_rounds: risk rounds; each round is one turn per debater.
-        workspace: directory holding ``.jaato/`` (framework assets) and
-            ``.env``; the driver's own state goes under ``.ta_cascade/``.
+        workspace: directory holding ``.env`` and, unless ``config_root``
+            says otherwise, ``.jaato/``; the driver's own state goes under
+            ``.ta_cascade/``.
+        config_root: the ``.jaato/`` tree the daemon resolves profiles,
+            personas, schemas and scripts from.  Defaults to
+            ``<workspace>/.jaato``; a jaato-eval driver arm hands one over
+            OUTSIDE the workspace (:mod:`ta_cascade.contract`).
+        cascade_id: the id every session of this run is stamped with.  A
+            run mints one unless the contract hands it one, in which case
+            it MUST use that: the engine's observer, its per-stage session
+            records and any task pool key on the id the engine chose.
         env_file: the workspace ``.env`` (the SESSION env — ``JAATO_PROFILE_SET``
             and the provider credential are read from it daemon-side).
         socket: the daemon's IPC socket.
@@ -78,6 +87,8 @@ class RunConfig:
     max_stale_days: int = 7
     connect_timeout: float = 120.0
     auto_start: bool = True
+    config_root: Optional[Path] = None
+    cascade_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         self.ticker = self.ticker.strip().upper()
@@ -89,6 +100,7 @@ class RunConfig:
         if self.asset_type not in ("stock", "crypto"):
             raise ValueError("asset_type must be 'stock' or 'crypto'")
         self.workspace = Path(self.workspace).resolve()
+        self.config_root = Path(self.config_root or self.workspace / ".jaato").resolve()
         self.env_file = Path(self.env_file or self.workspace / ".env").resolve()
         self.journal_dir = Path(self.journal_dir or self.workspace / ".ta_cascade" / "journal")
         self.results_dir = Path(self.results_dir or self.workspace / "results")
@@ -97,16 +109,6 @@ class RunConfig:
             or os.environ.get("TA_CASCADE_DECISION_LOG")
             or Path.home() / ".ta_cascade" / "decisions.jsonl"
         )
-
-    @property
-    def config_root(self) -> Path:
-        """The ``.jaato`` directory: profiles, agents, schemas, scripts.
-
-        Framework territory.  The daemon resolves profiles and personas from
-        here and writes its own ``logs/`` and ``sessions/`` into it; nothing
-        this driver produces belongs here (see :attr:`journal_dir`).
-        """
-        return self.workspace / ".jaato"
 
     @property
     def run_signature(self) -> str:

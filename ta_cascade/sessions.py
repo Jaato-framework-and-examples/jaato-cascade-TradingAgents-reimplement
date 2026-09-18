@@ -62,6 +62,7 @@ def open_stage(
         auto_start=cfg.auto_start,
         env_file=str(cfg.env_file),
         workspace_path=str(cfg.workspace),
+        config_root=str(cfg.config_root),
         on_status_change=_on_status,
         connect_timeout=cfg.connect_timeout,
         profile=profile,
