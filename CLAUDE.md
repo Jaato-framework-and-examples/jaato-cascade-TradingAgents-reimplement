@@ -5,7 +5,10 @@ written so another agent can continue without the original conversation.
 Read it fully before changing anything. `README.md` is for humans;
 `docs/assessment.md` is the design rationale; `docs/gaps.md` is the live
 list of what is open; `docs/size-and-complexity.md` compares this tree with
-the reference (regenerate with `scripts/measure_size.py`). This file is the operational layer on top of them.
+the reference (regenerate with `scripts/measure_size.py`); `docs/manual.md`
+is the vocabulary — market, pipeline, jaato — the mechanisms, and the
+argument for why they should work. This file is the operational layer on
+top of them.
 
 ---
 
