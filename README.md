@@ -24,7 +24,8 @@ log are written fresh. See [docs/gaps.md](docs/gaps.md) #8.
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"     # plus jaato-server, for the daemon
 jaato-doctor --workspace . --env-file .env                      # preflight
-# set JAATO_PROFILE_SET and the provider credential in .env, then:
+# set JAATO_PROFILE_SET in .env; the OpenRouter key is resolved daemon-side
+# from pass://jaato/openrouter/api-key (`pass insert jaato/openrouter/api-key`), then:
 python -m ta_cascade analyze NVDA 2026-01-15 --analysts market,news,fundamentals
 ```
 

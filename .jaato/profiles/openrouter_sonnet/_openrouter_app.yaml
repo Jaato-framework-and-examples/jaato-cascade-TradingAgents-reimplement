@@ -16,7 +16,13 @@ description: OpenRouter credential and app attribution shared by every stage.
 plugins: []
 plugin_configs:
   openrouter:
-    api_key: ${JAATO_OPENROUTER_API_KEY}
+    # A secret URI, resolved daemon-side from the pass store — not an env
+    # var read from the workspace .env.  Two reasons: the key then lives in
+    # no file beside the workspace, and a jaato-eval driver arm materialises
+    # a fresh workspace whose .env carries only JAATO_PROFILE_SET, so an
+    # env-var credential would be absent there (jaato #1110, #1112).
+    # `jaato-doctor --secret pass://jaato/openrouter/api-key` proves it resolves.
+    api_key: "pass://jaato/openrouter/api-key"
     http_referer: https://github.com/Jaato-framework-and-examples/jaato-cascade-TradingAgents-reimplement
 
     # ---------------------------------------------------------------- routing

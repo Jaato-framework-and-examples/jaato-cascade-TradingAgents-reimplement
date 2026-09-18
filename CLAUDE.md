@@ -76,7 +76,8 @@ jaato-doctor --workspace . --env-file .env
 jaato-scaffold validate . --set openrouter_sonnet
 jaato-scaffold validate . --set echo         # info-level "echo is a test double" lines are expected
 
-# run (needs JAATO_PROFILE_SET and a provider credential in .env)
+# run (needs JAATO_PROFILE_SET in .env; the OpenRouter key resolves daemon-side
+#      from pass://jaato/openrouter/api-key — `jaato-doctor --secret pass://jaato/openrouter/api-key` proves it)
 python -m ta_cascade analyze NVDA 2026-01-15 --analysts market,news,fundamentals
 python -m ta_cascade analyze NVDA 2026-01-15 --debate-rounds 2 --risk-rounds 1 -v
 python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts market,sentiment
@@ -166,7 +167,8 @@ scripts/measure_size.py    repo tooling YOU run (never the daemon); regenerates
 docs/assessment.md         the port assessment (moved from the jaato repo; framework paths refer to jaato)
 docs/gaps.md               living gap tracker with statuses and run findings
 docs/size-and-complexity.md  lines, complexity and dependencies vs the reference
-.env                       gitignored; JAATO_PROFILE_SET + provider credential (+ FRED_API_KEY)
+.env                       gitignored; JAATO_PROFILE_SET (+ FRED_API_KEY). No provider key: the
+                           OpenRouter set names pass://jaato/openrouter/api-key, resolved daemon-side
 ```
 
 The 13 agents: `market_analyst`, `sentiment_analyst`, `news_analyst`,
@@ -399,8 +401,10 @@ StockTwits/Reddit ingestion, 22 unit tests and the end-to-end run.
 
 Not done (see `docs/gaps.md` for the full table):
 
-1. **A run against a real model.** Put `JAATO_OPENROUTER_API_KEY` in `.env`
-   (`JAATO_PROFILE_SET=openrouter_sonnet` is already there), run
+1. **A run against a real model.** Store the OpenRouter key at
+   `pass://jaato/openrouter/api-key` — the set resolves it daemon-side, and
+   `jaato-doctor --secret pass://jaato/openrouter/api-key` proves it
+   (`JAATO_PROFILE_SET=openrouter_sonnet` is already in `.env`), run
    `python -m ta_cascade analyze NVDA <recent date> --analysts market -v`,
    read `.jaato/logs/` and `results/`. Expect to tune each stage's
    `budget_control` ceiling,
