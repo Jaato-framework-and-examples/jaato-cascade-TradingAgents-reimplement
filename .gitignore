@@ -11,3 +11,40 @@ results/
 .pytest_cache/
 *.egg-info/
 .ta_cascade/
+
+# .jaato/ mixes AUTHORED assets (profiles, agents, schemas, processors,
+# ...) with RUNTIME STATE (sessions, logs, memories, caches, stored
+# credentials).  Only the first is committable, so everything under it
+# is ignored unless re-included below.  Maintained by
+# `jaato-scaffold new gitignore`; `jaato-scaffold validate` checks it.
+!.jaato/
+.jaato/*
+!.jaato/profiles/
+!.jaato/agents/
+!.jaato/instructions/
+!.jaato/completion_schemas/
+!.jaato/spawn_schemas/
+!.jaato/scripts/
+!.jaato/services/
+!.jaato/references/
+!.jaato/templates/
+!.jaato/template_routing.yaml
+!.jaato/apparmor-fragments/
+!.jaato/reactors.json
+!.jaato/prompts/
+!.jaato/gc.json
+!.jaato/pricing.json
+!.jaato/permissions.json
+!.jaato/reliability-policies.json
+!.jaato/webhook.json
+!.jaato/sandbox.json
+!.jaato/filesystem_query.json
+!.jaato/thinking.json
+!.jaato/formatters.json
+!.jaato/scaffold.json
+!.jaato/keybindings.json
+!.jaato/keybindings/
+!.jaato/openers.json
+!.jaato/theme.json
+!.jaato/themes/
+.jaato/**/__pycache__/
