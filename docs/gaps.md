@@ -328,6 +328,48 @@ name that passage.
   claude-code payload `outdated` at 0.15.0 while my own check looked only for
   `stale`, so the refresh did not run until doctor named it.
 
+## The driver as a jaato-eval arm (2026-09-18)
+
+A backtest is a matrix — tickers × dates × repeats — and jaato-eval owns
+every matrix mechanic; what it could not express was an arm that is this
+driver rather than one session. jaato#1110 designed that, #1112 shipped it
+(`harness.kind: driver`, a versioned environment contract, the arm's cascade
+id as the join between driver, observer, pool and per-stage records), and
+this repository is its first consumer.
+
+- **What changed here.** `contract.py` reads `JAATO_EVAL_*` once and refuses
+  a version it does not know; `RunConfig` gains `config_root` and
+  `cascade_id`, which the CLI takes from the contract, and `open_stage` now
+  passes `config_root` (only the observer did). Under the contract an
+  unreachable daemon exits 75, the code the engine records as BLOCKED.
+  `python -m ta_cascade.score` grades a cell against realised returns —
+  rating direction versus alpha over `holding_days` against the benchmark,
+  a Hold right within a ±1 % band — with exit 0/1/75 and one JSON line of
+  the facts. `backtest-tasks` writes the manifests.
+- **Two facts shaped the manifests.** Every stage profile carries its own
+  `budget_control`, and a session with its own ceiling never draws on a task
+  pool (the framework's rule), so no `budget:` block and one cid per arm.
+  And every arm is a fresh workspace, so the decision log's walk-forward
+  loop cannot cross arms: `--no-memory`, and a backtest with memory is not
+  offered yet.
+- **Measured, zero model cost.** `backtests/echo-smoke` runs the whole
+  pipeline on the echo set as an arm: driver exit 0, all 9 sessions
+  attributed to the arm, `state.json` in the arm's workspace, the engine's
+  `.env` carrying `JAATO_PROFILE_SET=echo`. `ECHO` is a real Yahoo symbol,
+  so the scorer even grades it (`alpha +2.8 %`, PASS) — run by hand in the
+  kept workspace, because in the sweep the grader was BLOCKED with exit
+  127: jaato-eval exports `JAATO_EVAL_PYTHON` to the driver and not to the
+  script grader (`graders/script.py:115`). Filed as jaato#1127; the
+  generated grader keeps `"$JAATO_EVAL_PYTHON"`, which is right once that
+  lands, rather than a PATH bet or a per-host absolute path.
+- **The driver must be importable by the engine's interpreter.** An arm's
+  working directory is its scratch workspace, so `-m ta_cascade` needs the
+  package installed there: `pip install -e .` into the daemon's venv.
+- **A regression of my own, fixed here.** PR #13 changed the shared
+  identity's `api_key` to `pass://` after `validate` alone; the unit tier,
+  which asserts on that key, had been failing on main since. Both tiers ran
+  before this change went up.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
@@ -351,7 +393,7 @@ sake. Reimplement, never copy.
 | P8 | **Output language** setting injected into every prompt | English only | low | one `{{language}}` param on every persona plus a base-instruction line |
 | P9 | **Azure OpenAI and Bedrock providers** (17 OpenAI-compatible specs, a capabilities table with per-model structured-output method, DeepSeek/MiniMax reasoning quirks) | jaato's 18 providers; OpenAI-family via OpenRouter | medium | gap #1 above |
 | P10 | **Benchmark by ticker suffix** (`.T` → Nikkei, `.L` → FTSE, … else SPY) and a **decision-log rotation cap** | one benchmark symbol (`RunConfig.benchmark`); unbounded log | low | both are small additions to `memory.py` / `config.py` |
-| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 74 unit tests (config, journal, memory point-in-time, indicators, snapshot windows and staleness, tools, gates, report, social parsing, board, observer) and 3 end-to-end | medium | write against our own functions as each feature lands |
+| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 98 unit tests (config, journal, memory point-in-time, indicators, snapshot windows and staleness, tools, gates, report, social parsing, board, observer, the jaato-eval contract, the scorer, the task generator) and 3 end-to-end | medium | write against our own functions as each feature lands |
 | P12 | **Structured-output fallback to free text** when a model cannot bind a schema, with regex rating extraction and a `REVIEW` sentinel | the daemon re-prompts an agent that ends in prose; a stage with no payload raises `StageFailed` | n/a | deliberately different: a missing decision stops the run rather than being parsed out of prose |
 | P13 | **Checkpoint resume at every graph node**, opt-in | journal per stage and per debate turn | done | equivalent; see gap #2 |
 | P14 | **Reddit + StockTwits ingestion** | done | done | gap #14 |

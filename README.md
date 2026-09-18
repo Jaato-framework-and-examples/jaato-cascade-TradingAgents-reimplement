@@ -48,6 +48,27 @@ recorded in `~/.ta_cascade/decisions.jsonl`; the next run on the same ticker
 scores them against realised returns, has a reflector agent write a lesson,
 and hands the lessons to the portfolio manager.
 
+## Backtests
+
+A backtest is a jaato-eval sweep whose arms are runs of this driver
+(`harness.kind: driver`, jaato #1110): one task per (ticker, date), graded
+against what the market did afterwards by `python -m ta_cascade.score` —
+rating direction versus the holding-period return over the benchmark, a
+Hold right within ±1 %. jaato-eval owns repeats, arms across profile sets,
+scratch workspaces, resume, concurrency, the per-arm ceiling and the report.
+
+```bash
+.venv/bin/pip install -e .      # the engine's interpreter must import ta_cascade from any directory
+python -m ta_cascade backtest-tasks pilot --tickers NVDA,AMD --from 2026-04-03 --to 2026-08-28 --every 7
+jaato-eval run backtests/pilot/tasks --profile-set openrouter_sonnet --socket /tmp/jaato.sock \
+    --out backtests/pilot/results.jsonl --workspaces /tmp/pilot-ws --arm-timeout 1200 --resume
+```
+
+`--repeats 5` on one cell is a determinism study. The default analyst set is
+`market` alone: the news and social sources serve recent items only, so on a
+historical date the others would see nothing. `backtests/echo-smoke` runs the
+whole pipeline as an arm on the echo set at zero model cost.
+
 ## Tests
 
 ```bash

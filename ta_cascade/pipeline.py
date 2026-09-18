@@ -300,7 +300,10 @@ async def run(cfg: RunConfig, *, record_decision: bool = True,
     event stream, pumped by :func:`~ta_cascade.sessions.observing`.
     """
     board = board or NullBoard()
-    cascade_id = uuid.uuid4().hex
+    # The contract's id when there is one: the engine observes, attributes
+    # and pools by the id IT chose (jaato #1110), so a minted one would make
+    # this run invisible to it.
+    cascade_id = cfg.cascade_id or uuid.uuid4().hex
     journal = Journal(cfg.journal_dir, cfg.run_key)
     memory = DecisionLog(cfg.decision_log)
     board.plan(plan_of(cfg))

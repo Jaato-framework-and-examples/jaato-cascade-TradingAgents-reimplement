@@ -25,6 +25,15 @@ def test_driver_products_stay_out_of_config_root(tmp_path):
         assert cfg.config_root not in path.parents
 
 
+def test_contract_fields_override_the_defaults(tmp_path):
+    cfg = RunConfig("NVDA", "2026-01-15", workspace=tmp_path)
+    assert cfg.config_root == tmp_path / ".jaato" and cfg.cascade_id is None
+    given = RunConfig("NVDA", "2026-01-15", workspace=tmp_path,
+                      config_root=tmp_path / "elsewhere" / ".jaato", cascade_id="jaato-eval-x-1")
+    assert given.config_root == (tmp_path / "elsewhere" / ".jaato").resolve()
+    assert given.cascade_id == "jaato-eval-x-1"
+
+
 def test_rejects_bad_inputs(tmp_path):
     with pytest.raises(ValueError):
         RunConfig("X", "2026-01-15", analysts=["weather"], workspace=tmp_path)
