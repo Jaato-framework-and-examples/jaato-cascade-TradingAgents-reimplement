@@ -8,7 +8,8 @@ Layout under ``<results_dir>/<ticker>/<trade_date>/``::
     3_trading/proposal.md      the trader's proposal
     4_risk/debate.md           the risk transcript
     5_portfolio/decision.md    the portfolio manager's decision
-    report.md                  everything, in order
+    chart.png                  the recommendation drawn on the data (ta_cascade.chart)
+    report.md                  everything, in order; links the chart when it was drawn
     state.json                 the raw run state
 
 Sections are written only when their content exists, so a run with two
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from .state import RunState
 
@@ -61,11 +62,20 @@ def sections(state: RunState) -> List[Tuple[str, str, str]]:
     return out
 
 
-def write_report(state: RunState, results_dir: Path) -> Path:
+def write_report(state: RunState, results_dir: Path, chart: Optional[Path] = None) -> Path:
+    """Write the tree; link ``chart`` (a file already drawn under the run's directory) when given.
+
+    The chart is drawn by :mod:`ta_cascade.chart` before this runs, so this
+    stays a pure function of the state and a chart that could not be drawn
+    leaves no dangling link.
+    """
     root = Path(results_dir) / state.ticker / state.trade_date
     root.mkdir(parents=True, exist_ok=True)
     full = [f"# Analysis report: {state.ticker} as of {state.trade_date}\n",
             f"_{state.instrument_context}_\n"]
+    if chart is not None:
+        rating = (state.portfolio_decision or {}).get("rating", "")
+        full.append(f"![{state.ticker} as of {state.trade_date}: {rating}]({Path(chart).name})\n")
     for rel, title, body in sections(state):
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)

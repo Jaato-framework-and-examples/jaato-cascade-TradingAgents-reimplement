@@ -36,6 +36,14 @@ profile in `.jaato/profiles/<set>/`; the set is selected by
 (real models) and `echo` (the framework's deterministic test double — zero
 cost, no credentials; what the tests run on).
 
+A finished run also draws its recommendation: `results/<ticker>/<date>/chart.png`,
+linked from `report.md` — candles over the last 120 days with the moving
+averages and Bollinger band, the span's high and low dated, the trader's entry
+and stop and the target as lines, the rating in the corner, and, for a
+backtest cell, the holding period after the as-of date shaded. It is drawn by
+code from the same bars the verified snapshot comes from; the model never sees
+it.
+
 On a terminal the run draws itself: a diagram of the pipeline filling in as
 it goes, with the debates showing who holds the floor, over a trace of what
 each stage is doing inside (`--display lines` for plain output; piping picks
