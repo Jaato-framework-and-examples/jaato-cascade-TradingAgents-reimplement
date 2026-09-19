@@ -114,8 +114,16 @@ and the rating says whether to hold more, the same, or less.
 
 ### Measuring an answer
 
-- **holding period** — how long a decision is held before scoring: 5
-  sessions by default.
+- **holding period** — the investor's side of the word: after acting on a
+  rating you *hold* the position for a while before judging the call. The
+  scorer pretends the decision was acted on at the as-of close and looks
+  five sessions later (`holding_days = 5`): the instrument's close then
+  versus its as-of close, and the benchmark's over the same five sessions.
+  Nothing is bought; it is the window the rating is judged over, and the
+  same window the decision log uses to resolve a live decision. The
+  portfolio manager's stated horizons are often months; a rating on disk
+  can be re-scored at 20 sessions (`--holding-days 20`) with no new model
+  runs, only the returns change.
 - **benchmark** — what a return is measured against: `SPY`, the S&P 500
   ETF. Beating the benchmark, not merely rising, is the bar.
 - **return · alpha** — the instrument's holding-period return, and that
@@ -123,7 +131,15 @@ and the rating says whether to hold more, the same, or less.
   is alpha +5.78 %.
 - **hit rate** — the share of cells whose rating pointed the right way:
   Buy/Overweight right when alpha > 0, Sell/Underweight when alpha < 0,
-  Hold when |alpha| ≤ 1 %.
+  Hold when |alpha| stays within the **hold band** — one ATR over the
+  holding period, as a fraction of price: about 2 % a week for the index,
+  6–18 % for a volatile stock, so "flat" means flat *for this instrument*.
+  (A fixed ±1 % was the first rule; on a stock that moves 8 % a day it
+  failed nearly every Hold and made the hit rate a fact about the ruler.)
+  A cell whose ticker is the benchmark is scored on its raw return, and a
+  directional call with a stop is scored along the path: if a session
+  crosses the stop, the position is out at the stop, not at the week's
+  close.
 - **look-ahead bias** — letting an analysis see data from after its date.
   The as-of rule prevents it; fundamentals from a source without filing
   dates cannot be pinned, and the report says so.
@@ -468,10 +484,14 @@ risk/reward and recommended Hold; the trader agreed, keeping a stop at
 *What happened:* the shaded span. Five sessions on, the close was 230.36 —
 +5.89 % against SPY's +0.11 %. Price never came near the stop.
 
-*How the scorer read it:* a Hold is right when the excess return stays
-within ±1 %; this was +5.78 %, so **FAIL**. The call was defensible on the
-picture — the reversal candle is real, the risk/reward was as stated —
-and wrong in outcome. One cell says nothing about the strategy; it says
+*How the scorer read it:* under the first rule — a Hold right within ±1 %
+— this was +5.78 %, so **FAIL**. Under the volatility band (NVDA's is
+about 7 % a week) the same Hold is **PASS**: the stock moved, but not
+more than it moves on its own. The call was defensible on the picture —
+the reversal candle is real, the risk/reward was as stated — and the
+week's move was inside the noise. Which is the point about Holds at this
+horizon: on a volatile stock they are hard to falsify in a week, so a
+panel's directional calls are what carry information. One cell says nothing about the strategy; it says
 what a reader can now see at a glance.
 
 ### Two cautions

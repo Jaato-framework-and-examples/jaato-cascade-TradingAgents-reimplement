@@ -462,6 +462,34 @@ def _history_after(symbol: str, day: dt.date, holding_days: int):
     return df[df.index.date > day]
 
 
+def hold_band(symbol: str, as_of: str, holding_days: int) -> float:
+    """One ATR over ``holding_days`` sessions, as a fraction of the as-of close.
+
+    The scorer's allowance for a Hold: the move an instrument makes on its
+    own in that many sessions, so "flat" means flat FOR THIS INSTRUMENT —
+    about 2 % a week for the index, 6–18 % for a volatile single stock.
+    ATR is scaled by the square root of the session count, the usual
+    random-walk scaling.  Read from the same indicators the snapshot uses.
+    """
+    end = _date(as_of)
+    df = compute_indicators(_history(symbol, end - dt.timedelta(days=420), end))
+    last = df.iloc[-1]
+    return float(last["atr_14"]) * float(holding_days) ** 0.5 / float(last["Close"])
+
+
+def path_after(symbol: str, trade_date: str, holding_days: int):
+    """The holding period's bars after ``trade_date`` (High, Low, Close), or ``None`` if not enough yet.
+
+    For the scorer's stop check: an endpoint return cannot say whether a
+    stop was touched on the way.  Returns a frame of exactly ``holding_days``
+    bars strictly after the trade date.
+    """
+    later = _history_after(symbol, _date(trade_date), holding_days)
+    if len(later) < holding_days:
+        return None
+    return later.head(int(holding_days))
+
+
 def return_after(symbol: str, trade_date: str, holding_days: int) -> Optional[Tuple[float, str]]:
     """``(return, resolution_date)`` over ``holding_days`` bars after ``trade_date``, or ``None`` if not enough bars yet."""
     try:
