@@ -62,7 +62,8 @@ A backtest is a jaato-eval sweep whose arms are runs of this driver
 (`harness.kind: driver`, jaato #1110): one task per (ticker, date), graded
 against what the market did afterwards by `python -m ta_cascade.score` —
 rating direction versus the holding-period return over the benchmark, a
-Hold right within ±1 %. jaato-eval owns repeats, arms across profile sets,
+Hold right within the instrument's own weekly volatility (one ATR over the
+holding period), a stop honoured along the path. jaato-eval owns repeats, arms across profile sets,
 scratch workspaces, resume, concurrency, the per-arm ceiling and the report.
 
 ```bash

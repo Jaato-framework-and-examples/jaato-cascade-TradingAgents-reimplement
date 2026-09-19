@@ -409,6 +409,67 @@ inputs.
   alpha per cell; the table above was cross-checked by re-running the
   scorer in the kept workspaces.
 
+## The pilot (2026-09-19): 12 cells × 5, and what the scoring was measuring
+
+`backtests/pilot`: NVDA, AMD and SPY on 2026-07-24, 08-07, 08-21 and 09-04,
+five arms per cell, `openrouter_sonnet`, market analyst only. Sixty arms,
+none blocked, no errors, no ceiling hit; $47.18 ($0.79 mean, $0.34–1.21),
+5.8 h sequential. Every kept workspace carries its chart.
+
+**As first scored** (5 sessions, a fixed ±1 % Hold band): the panel's
+majority was right in 4 of 12 cells, individual arms 23 of 60 — no better
+than buy-and-hold (4/12) or a close-above-SMA-20 rule (5/12) on the same
+cells. Two defects in the experiment, both mine, decided that number:
+
+- **SPY against SPY is degenerate.** Alpha ≡ 0, so an index cell was right
+  iff the panel said Hold; four of twelve cells measured nothing else.
+- **A ±1 % band sits far inside the instruments' weekly noise** (one ATR
+  over five sessions is 6–18 % of price for NVDA and AMD), so the 34 Hold
+  ratings were almost mechanically wrong whenever the stock moved.
+
+**The scorer now** (`ta_cascade/score.py`): the Hold band is one ATR over
+the holding period as a fraction of price (`data.hold_band`; `--hold-band
+0.01` keeps the fixed rule); a cell whose ticker is the benchmark scores its
+raw return; a directional call with a stop is scored along the path
+(`data.path_after`), out at the stop when a session crosses it. Re-scored
+on the same sixty runs (`backtests/pilot/rescored.jsonl`):
+
+| | majority right | arms right |
+|---|---|---|
+| fixed ±1 % band | 4/12 | 23/60 |
+| volatility band, index raw, stops honoured | 8/12 | 46/60 |
+
+**Read that honestly.** The rise is almost entirely Holds becoming right:
+Hold majorities 6 of 6, **directional majorities 2 of 6**. A Hold on a
+stock that moves 8 % a day is close to unfalsifiable in a week, so at this
+horizon the panel's directional calls are the information, and those are
+2 of 6 — AMD 07-24 (bearish, −9.9 %) and SPY 08-07 (bullish, +0.4 %)
+right; SPY 07-24, AMD 08-07, NVDA 08-21 (bearish into rises) and NVDA
+09-04 (bullish into −7.2 %) wrong. Twelve cells cannot separate that from
+chance; they can say the ruler now measures the instrument and not itself.
+
+- **Stops fire constantly.** 12 of the 19 directional calls that carried a
+  stop were stopped out inside the five sessions — the trader sets stops a
+  few per cent from the price on instruments that move that much in a day.
+  A stop that tight is a coin flip on the path, not risk control; a
+  volatility-scaled stop is a persona question for the trader.
+- **Agreement is modest and the margin predicted nothing.** Direction
+  unanimous in 3 cells, 4–1 in 2, 3–2 in 7; unanimous majorities were right
+  1 of 3 (fixed band). 34 of 60 ratings were Hold; the rest leaned bearish
+  16 to 10.
+- **Both large directional misses are reversal reads**: bearish after AMD's
+  26 % drop (then +6 %), bullish after NVDA's capitulation-and-rally on
+  09-04 (then −8.4 % raw). The persona reads a sharp move as the start of
+  the next one; twice out of twice it was the end of it.
+- **A 20-session re-score** is possible for the six cells old enough
+  (3 of 6 right under the fixed band) and will cover all twelve by
+  2026-10-02.
+
+Next, in order: a paired experiment on the same twelve cells with the
+reversal logic changed in the analyst's and manager's personas (and an
+abstain rating, so "no edge at this horizon" is not scored as a position);
+then breadth.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
