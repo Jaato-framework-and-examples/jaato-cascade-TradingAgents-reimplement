@@ -1,0 +1,52 @@
+{
+  "trend_aligned": {
+    "type": "noul",
+    "instructions": "`snapshot.last_close` is above all three of `snapshot.sma_20`, `snapshot.sma_50` and `snapshot.sma_200`."
+  },
+  "breakout_claimed": {
+    "type": "noul",
+    "instructions": "Does `market_report.text` state that the price has already broken out above a prior high or resistance level?"
+  },
+  "breakout_supported": {
+    "type": "noul",
+    "instructions": "Is a breakout above a prior high supported by `snapshot`: is `snapshot.last_close` above the `snapshot.high_120d.value`?"
+  },
+  "momentum": {
+    "type": "score",
+    "instructions": "Judging from `snapshot` (RSI, the moving averages, the recent closes), where is the price momentum over the last sessions?",
+    "criteria": [
+      "Falling: recent closes lower, RSI below 45",
+      "Flat or mixed",
+      "Rising steadily, RSI 50-65",
+      "Accelerating or stretched, RSI above 65 or price at the upper band"
+    ]
+  },
+  "sharp_move_just_happened": {
+    "type": "noul",
+    "instructions": "Within the last five entries of `snapshot.recent_closes`, has the price moved more than 4 percent in a single session?"
+  },
+  "stance_warranted": {
+    "type": "noul",
+    "instructions": "Does the evidence in `snapshot` support `market_report.stance` held with `market_report.confidence`?"
+  },
+  "next_week_vs_index": {
+    "type": "choice",
+    "instructions": "Over the next five trading sessions after `as_of`, how will `ticker` most likely perform relative to the S&P 500, judging only from `snapshot` and `market_report`?",
+    "criteria": {
+      "outperform": "Beats the index by more than the stock's usual weekly move",
+      "in_line": "Within the stock's usual weekly move of the index",
+      "underperform": "Lags the index by more than the stock's usual weekly move"
+    }
+  },
+  "rating": {
+    "type": "choice",
+    "instructions": "Given `snapshot` and `market_report`, which portfolio rating for `ticker` as of `as_of`, on a one-week horizon?",
+    "criteria": {
+      "Buy": "Open or add a full position; strong expected outperformance",
+      "Overweight": "Hold more than the neutral weight; expected to beat the index",
+      "Hold": "Keep the neutral weight; no directional edge",
+      "Underweight": "Hold less than the neutral weight; expected to lag the index",
+      "Sell": "Exit; strong expected underperformance"
+    }
+  }
+}

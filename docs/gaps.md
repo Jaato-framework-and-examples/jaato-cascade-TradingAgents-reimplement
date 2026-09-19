@@ -470,6 +470,39 @@ reversal logic changed in the analyst's and manager's personas (and an
 abstain rating, so "no edge at this horizon" is not scored as a position);
 then breadth.
 
+## Jev over the pilot (2026-09-19): a System One model as the judge
+
+TypeSafe's Jev (`jev-1.13.0`) takes structured state and typed questions
+and returns typed answers with probabilities, in ~150 ms, at $0.042 per
+million input tokens, no output tokens. The pilot's sixty arms were sent
+through it — each arm's evidence only (the cell's 120-day snapshot and that
+arm's market report; no judge output, no outcome) with eight questions
+(`backtests/pilot/jev/questions.json`; `batch.py`; answers in
+`backtests/pilot/jev.jsonl`), and its `rating` scored with the pilot's
+ruler beside the panel's vote. Whole run: 172,751 input tokens, ≈ $0.007,
+against the pilot's $47.
+
+- **Majorities right 11 of 12 against the panel's 8 of 12 — and the
+  difference is Hold.** Every cell Jev won is one where it said Hold and
+  the panel went bearish; a Hold on these stocks is right unless the week
+  clears the band. On the calls that carry information, **directional
+  arms: Jev 14 of 26, panel 12 of 26** — a coin, both. On NVDA 09-04 Jev
+  went Buy 3 / Overweight 2 into the −7.2 % week, the pipeline's own
+  reversal-read failure with more conviction.
+- **The arithmetic questions are reliable**: `trend_aligned` (close above
+  all three averages) agreed with the computed truth 60 of 60, peaked near
+  0 or 1. As a checker of a report's claims against the snapshot it works,
+  and costs nothing.
+- **Calibration, faintly**: confidence ≥ 0.7 right 42 of 51, below 0.7
+  right 6 of 9 — the right direction, far too small a sample.
+- **Where it fits**: not as a better judge of next week's direction —
+  nobody in this experiment is — but as typed checks against structured
+  state, and as the cheapest way to run calibration studies over hundreds
+  of cells, the only route to knowing whether any of these ratings carry
+  signal. Access was an API key in the pass store
+  (`jaato/typesafe/api-key`); no jaato integration exists yet, and a
+  provider adapter would be the framework's to add.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
