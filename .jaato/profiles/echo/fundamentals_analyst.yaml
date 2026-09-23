@@ -1,5 +1,6 @@
 # fundamentals_analyst — echo set: deterministic test double, no credentials, no network.
 name: fundamentals_analyst
+description: 'fundamentals analyst stage: data tools in, a typed report out.'
 inherits:
 - _base_fundamentals_analyst
 plugins: []

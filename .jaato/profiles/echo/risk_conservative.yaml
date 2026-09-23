@@ -1,5 +1,6 @@
 # risk_conservative — echo set: deterministic test double, no credentials, no network.
 name: risk_conservative
+description: 'conservative posture in the risk discussion: plain turns, no completion gate.'
 inherits:
 - _base_risk_conservative
 plugins: []

@@ -1,5 +1,6 @@
 # reflector — openrouter set: anthropic/claude-sonnet-4.5.
 name: reflector
+description: scores a past decision against its realised outcome.
 inherits:
 - _base_reflector
 - _openrouter_app

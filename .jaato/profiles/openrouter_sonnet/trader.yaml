@@ -1,5 +1,6 @@
 # trader — openrouter set: anthropic/claude-sonnet-4.5.
 name: trader
+description: turns the research plan into a trade proposal.
 inherits:
 - _base_trader
 - _openrouter_app

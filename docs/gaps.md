@@ -503,6 +503,67 @@ against the pilot's $47.
   (`jaato/typesafe/api-key`); no jaato integration exists yet, and a
   provider adapter would be the framework's to add.
 
+## Findings from the 2026-09-23 pull and health check
+
+Pulled 79 commits of jaato (sdk 0.23.0 → **0.26.0**, server 0.16.0 →
+**0.20.0**), reinstalled the editable packages, restarted the daemon and
+ran the full pipeline on NVDA as of 2026-09-22 (the last session).
+Finished in ~10 minutes, exit 0, thirteen stages, no stage failure and no
+degrade rung fired. Rating **Underweight** (entry 228.87, stop 234.76,
+target 215.00) against a split panel: market and fundamentals bullish,
+sentiment bearish, news neutral — the judges overrode the majority.
+
+- **`budget_control.limits.turns` is live after the upgrade.** The daemon
+  logged `limits={'tool_calls': 10, 'usd': 2.0, 'seconds': 600, 'turns': 12}`
+  on the debaters and `turns: 6` on the judges. This is the first
+  confirmation that the post-jaato#1068 replacement for `max_turns`
+  survives sdk 0.26 / server 0.20.
+- **The memory path closed a full cycle.** The portfolio manager cited the
+  lesson from the 2026-09-04 decision, which means that decision resolved,
+  the reflector wrote a lesson and it reached the persona. Today's call is
+  appended `pending` to `~/.ta_cascade/decisions.jsonl`, scoreable from
+  2026-09-29.
+- **StockTwits now fails hard: 403 Forbidden**, not an empty window. This
+  changes a documented expectation — §7 of CLAUDE.md and trap 10 said a
+  historical window comes back *quiet*, and quiet and unavailable are
+  deliberately different sentences in the data contract. The fetcher
+  reports it correctly as unavailable; nothing invented. Reddit was 60 %
+  down in the same run (`r/stocks` and `r/investing` failed, only
+  `r/wallstreetbets` returned).
+- **`FRED_API_KEY` is absent from `.env`**, so the fed funds rate, the
+  10-year and VIX were unavailable and the news analyst said so rather
+  than characterising the rate environment from memory. Configuration, not
+  code: `.env` is gitignored and lost the key.
+- **The run's cost could not be measured.** The framework tracks spend over
+  the `session.get_budget_usage` RPC and emits no spend line to the daemon
+  log, so there is no number to read. The pilot's measured $47 over 60 arms
+  puts this run near $0.80, but that is an inference from a different
+  configuration, not a measurement.
+- **`jaato-scaffold validate` no longer gates this repository** — filed as
+  **jaato#1217**. It exits 1 on errors in profiles the workspace does not
+  own: 13 errors, every one `tier: "user"`, from `~/.jaato/profiles/` and
+  from profiles shipped as package data inside `jaato-premium`. The
+  workspace's own findings were 16 warnings and zero errors. `--json`
+  already stamps each finding with `tier`; only the exit code ignores it.
+  Until it is fixed, `validate . --set <set> && commit` cannot pass, and
+  the honest check is the workspace-scoped count in the JSON.
+- **A child profile's absent `description` clobbers its base's.**
+  `description` is a required field whose value a child *replaces*, and an
+  omitted key resolves to the empty string rather than inheriting — measured
+  with `explain profile market_analyst`, which resolved none at all. All 13
+  `_base_<agent>` profiles declared one; none of the 26 set profiles did, so
+  every profile the driver actually uses advertised nothing. Fixed by
+  declaring the stage's description in both sets. Workspace warnings fell
+  from 16 to 3 (openrouter_sonnet) and 2 (echo).
+- **Three workspace warnings remain, all new framework surface:**
+  `regulatory_undeclared` (the EU AI Act block — `intended_purpose`,
+  `risk_class`, `interacts_with_persons`, `provider`; absent is UNDECLARED,
+  not minimal, and the determination is the provider's), `budget_control_absent`
+  on `_openrouter_app` (the provider-binding fragment, not a stage profile —
+  all 13 stage bases still carry ceilings), and `gitignore_hides_jaato_assets`
+  (`.gitignore` hides `.jaato/plans/`). None is a defect in the pipeline;
+  the regulatory block is a real decision to make before any production use.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
@@ -526,7 +587,7 @@ sake. Reimplement, never copy.
 | P8 | **Output language** setting injected into every prompt | English only | low | one `{{language}}` param on every persona plus a base-instruction line |
 | P9 | **Azure OpenAI and Bedrock providers** (17 OpenAI-compatible specs, a capabilities table with per-model structured-output method, DeepSeek/MiniMax reasoning quirks) | jaato's 18 providers; OpenAI-family via OpenRouter | medium | gap #1 above |
 | P10 | **Benchmark by ticker suffix** (`.T` → Nikkei, `.L` → FTSE, … else SPY) and a **decision-log rotation cap** | one benchmark symbol (`RunConfig.benchmark`); unbounded log | low | both are small additions to `memory.py` / `config.py` |
-| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 98 unit tests (config, journal, memory point-in-time, indicators, snapshot windows and staleness, tools, gates, report, social parsing, board, observer, the jaato-eval contract, the scorer, the task generator) and 3 end-to-end | medium | write against our own functions as each feature lands |
+| P11 | **Test coverage** of look-ahead guards per source, symbol normalisation, vendor routing and config precedence (≈45 upstream test files are framework-free) | 105 unit tests (config, journal, memory point-in-time, indicators, snapshot windows and staleness, tools, gates, report, social parsing, board, observer, the jaato-eval contract, the scorer, the task generator) and 3 end-to-end | medium | write against our own functions as each feature lands |
 | P12 | **Structured-output fallback to free text** when a model cannot bind a schema, with regex rating extraction and a `REVIEW` sentinel | the daemon re-prompts an agent that ends in prose; a stage with no payload raises `StageFailed` | n/a | deliberately different: a missing decision stops the run rather than being parsed out of prose |
 | P13 | **Checkpoint resume at every graph node**, opt-in | journal per stage and per debate turn | done | equivalent; see gap #2 |
 | P14 | **Reddit + StockTwits ingestion** | done | done | gap #14 |
