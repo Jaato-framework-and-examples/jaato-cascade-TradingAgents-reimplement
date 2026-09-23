@@ -1,5 +1,6 @@
 # reflector — echo set: deterministic test double, no credentials, no network.
 name: reflector
+description: scores a past decision against its realised outcome.
 inherits:
 - _base_reflector
 plugins: []

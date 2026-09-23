@@ -1,5 +1,6 @@
 # portfolio_manager — openrouter set: anthropic/claude-sonnet-4.5.
 name: portfolio_manager
+description: final decision after the risk discussion.
 inherits:
 - _base_portfolio_manager
 - _openrouter_app

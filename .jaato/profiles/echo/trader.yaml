@@ -1,5 +1,6 @@
 # trader — echo set: deterministic test double, no credentials, no network.
 name: trader
+description: turns the research plan into a trade proposal.
 inherits:
 - _base_trader
 plugins: []

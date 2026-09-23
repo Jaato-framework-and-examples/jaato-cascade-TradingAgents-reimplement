@@ -356,7 +356,12 @@ then text is all it does.
    a failed session under the prefetch deadline.
 10. **StockTwits' public symbol stream serves recent messages only**, so a
     historical window is normally empty and reported as quiet. Crypto pairs
-    are addressed as `<BASE>.X`.
+    are addressed as `<BASE>.X`. **Since 2026-09-23 the endpoint answers
+    403 Forbidden to this client**, so the source is *unavailable* rather
+    than quiet — a different sentence in the data contract (§7), and the
+    right one: nothing is inferred from an absence that was never observed.
+    Reddit degraded in the same run (`r/stocks` and `r/investing` failed,
+    `r/wallstreetbets` returned). See `docs/gaps.md`, 2026-09-23.
 11. **The `subagent` plugin README in jaato is stale** (documents
     `background=True` / `get_subagent_result`, which do not exist). Trust
     `jaato-scaffold explain plugin subagent`.
