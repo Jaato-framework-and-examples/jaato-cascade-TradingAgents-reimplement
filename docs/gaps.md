@@ -564,6 +564,45 @@ sentiment bearish, news neutral — the judges overrode the majority.
   (`.gitignore` hides `.jaato/plans/`). None is a defect in the pipeline;
   the regulatory block is a real decision to make before any production use.
 
+## The package rename (2026-09-27): `server` → `jaato_server`
+
+Pulled 239 commits of jaato: sdk 0.26.0 → **0.29.0**, eval 0.3.1 → 0.3.3,
+server 0.20.0 → **1.2.0**. The major bump is one change —
+`caeba843 Rename squatted top-level packages to jaato_server / jaato_tui`
+(jaato#1079). The top-level `server` package no longer exists: `import
+server` raises `ModuleNotFoundError` and `python -m server --daemon` is
+gone, replaced by `python -m jaato_server --daemon` and a `jaato-server`
+console script. The daemon then running had been started from the old
+module and was executing files that no longer existed on disk, so a
+restart was mandatory rather than hygienic.
+
+- **The driver needed no change.** `ta_cascade` imports only `jaato_sdk`,
+  which kept its name; the pipeline, sessions and profiles are untouched
+  by the rename. `jaato-doctor` reports 0 fail over 23 checks on the new
+  build and the 105 unit tests pass.
+- **The end-to-end tier broke by going green.** `tests/test_pipeline_echo.py`
+  opened with `pytest.importorskip("server")`, so after the rename the only
+  test that exercises the real daemon contract **skipped**, with a reason
+  that had become false:
+
+  ```
+  SKIPPED [1] tests/test_pipeline_echo.py:33: jaato-server (the daemon) is not installed
+  1 skipped in 0.38s
+  ```
+
+  jaato-server was installed; only its name had changed. A suite that
+  reports success while testing nothing is worse than one that fails, and
+  `importorskip` on a framework package converts every future rename into
+  exactly this. Fixed by naming `jaato_server` in the guard, in the two
+  `subprocess.run` daemon invocations and in the module docstring; the tier
+  then passes 3/3 in 5:18, which also confirms that sessions, completion
+  gates, budget aborts, resume and the reflector cycle all survive the
+  major bump.
+- **The end-to-end tier takes ~5:15, not ~3 minutes.** Measured 5:17 on
+  server 0.20.0 (2026-09-23) and 5:18 on server 1.2.0 — two builds, one
+  figure, so the number in CLAUDE.md was simply stale rather than a
+  regression introduced by either upgrade. Corrected there.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

@@ -8,7 +8,7 @@ debate loops, journaling and resume, the decision log — plus the daemon's
 own profile contract (schemas, completion gates, spawn-param validation).
 
 The daemon is started on a private socket with a private pid file and
-stopped afterwards.  Skipped when ``server`` is not importable (the SDK is
+stopped afterwards.  Skipped when ``jaato_server`` is not importable (the SDK is
 installed without the daemon).
 """
 from __future__ import annotations
@@ -30,7 +30,7 @@ from ta_cascade.config import RunConfig
 from ta_cascade.memory import DecisionLog
 
 REPO = Path(__file__).resolve().parents[1]
-server = pytest.importorskip("server", reason="jaato-server (the daemon) is not installed")
+jaato_server = pytest.importorskip("jaato_server", reason="jaato-server (the daemon) is not installed")
 
 pytestmark = pytest.mark.daemon
 
@@ -50,7 +50,7 @@ def workspace():
                     ignore=shutil.ignore_patterns("logs", "journal", "*.jsonl"))
     (ws / ".env").write_text("JAATO_PROFILE_SET=echo\n")
     sock, pid = ws / "d.sock", ws / "d.pid"
-    subprocess.run([sys.executable, "-m", "server", "--ipc-socket", str(sock),
+    subprocess.run([sys.executable, "-m", "jaato_server", "--ipc-socket", str(sock),
                     "--pid-file", str(pid), "--daemon"], check=True, timeout=180)
     # ``--daemon`` returns as soon as the process is forked; the socket appears
     # once plugin discovery finishes (a cold start), so wait for it here rather
@@ -63,7 +63,7 @@ def workspace():
     try:
         yield ws, sock
     finally:
-        subprocess.run([sys.executable, "-m", "server", "--stop", "--pid-file", str(pid),
+        subprocess.run([sys.executable, "-m", "jaato_server", "--stop", "--pid-file", str(pid),
                         "--ipc-socket", str(sock)], timeout=60)
         shutil.rmtree(ws, ignore_errors=True)
 
