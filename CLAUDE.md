@@ -87,8 +87,12 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 #   --no-journal / --clear-journal / --no-memory / --socket PATH / --workspace DIR
 #   --display auto|board|lines   auto draws the live board on a terminal, plain lines when piped
 
-# NOTE: two cascades on one daemon starve each other (jaato#898, docs/gaps.md).
-# For a run that must not be interrupted, give it its own daemon and --socket.
+# NOTE: jaato#898 (a second cascade starving until the first finished) is CLOSED.
+# One daemon serves several tenants: workspace, config_root and .env travel with
+# each SESSION, which is how it serves this workspace and another project's
+# profile set at once. The end-to-end tier shares it rather than starting one.
+# Its runner pool scales with concurrent demand, so a loaded box is loaded by
+# the tenants, not by any one of them.
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
@@ -442,8 +446,9 @@ for `rules_read`.
   No network, no daemon, under a second.
 - **End to end** (`tests/test_pipeline_echo.py`, marked `daemon`): copies
   `.jaato/` to a short temp workspace, writes `.env` with
-  `JAATO_PROFILE_SET=echo`, starts a daemon on a private socket and pid
-  file, waits for the socket, runs the whole pipeline twice (the second run
+  `JAATO_PROFILE_SET=echo`, and runs against the daemon ALREADY RUNNING
+  (`/tmp/jaato.sock`, or `TA_E2E_SOCKET`) rather than starting a private
+  file, runs the whole pipeline twice (the second run
   resolves the first run's decision through the reflector and injects the
   lesson), then a resume test with a pre-seeded journal and a spy on
   `open_stage`, then a budget test: in a copy of the workspace it caps one
