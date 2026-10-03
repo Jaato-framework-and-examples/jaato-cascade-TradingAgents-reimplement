@@ -1,0 +1,9 @@
+# trader — minimax set: MiniMax-M3.
+name: trader
+description: turns the research plan into a trade proposal.
+inherits:
+- _base_trader
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax

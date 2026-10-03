@@ -1,0 +1,16 @@
+# research_manager — minimax set: MiniMax-M3.
+name: research_manager
+description: judge of the investment debate; emits the research plan.
+inherits:
+- _base_research_manager
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax
+plugin_configs:
+  minimax:
+    api_params:
+      # M3 maps this to thinking: {type: adaptive}. No temperature here:
+      # `explain provider minimax` warns that reasoning models commonly
+      # reject an explicit 0.0, and omitting a parameter is never a 400.
+      enable_thinking: true

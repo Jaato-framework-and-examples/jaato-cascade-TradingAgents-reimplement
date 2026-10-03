@@ -1,0 +1,9 @@
+# bull_researcher — minimax set: MiniMax-M3.
+name: bull_researcher
+description: 'bull side of the investment debate: plain turns, no completion gate.'
+inherits:
+- _base_bull_researcher
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax

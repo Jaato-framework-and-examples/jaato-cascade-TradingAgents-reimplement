@@ -1,0 +1,9 @@
+# reflector — minimax set: MiniMax-M3.
+name: reflector
+description: scores a past decision against its realised outcome.
+inherits:
+- _base_reflector
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax

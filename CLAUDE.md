@@ -163,6 +163,13 @@ backtests/<name>/          generated matrices: fixture/ (empty) + tasks/<TICKER>
 .jaato/                    the workspace the daemon reads; DATA, not code
   profiles/_base_<agent>.yaml         13 provider-agnostic stage profiles (ceilings, schemas, gates)
   profiles/openrouter_sonnet/*.yaml   provider+model binding (anthropic/claude-sonnet-4.5 via OpenRouter)
+  profiles/minimax_m3/*.yaml          provider+model binding (MiniMax-M3 on the native minimax
+                                      provider). Same 13 stages, same _base_<agent> parents:
+                                      a set swaps the BINDING, never the stage determinism.
+                                      No prompt caching on this provider, and it carries the
+                                      `prose_tool_calls` quirk, which `explain` names and does
+                                      not describe — unmeasured here; kb-rip runs M3 under
+                                      completion gates, so gated stages do work on it.
   profiles/echo/*.yaml                deterministic test double set (canned payloads, no network)
   agents/<agent>.md                   13 personas (YAML frontmatter params + body with {{param}})
   instructions/00-team.md             base layer every persona sits on
