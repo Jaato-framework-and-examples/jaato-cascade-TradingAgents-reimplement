@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 UNAVAILABLE = "DATA_UNAVAILABLE"
 
@@ -207,8 +207,25 @@ RECENT_CLOSES = 10
 """How many of the newest closes the snapshot lists, each with its date."""
 
 
-def snapshot(symbol: str, as_of: str, lookback_days: int = 30, *, max_stale_days: int) -> str:
+SNAPSHOT_HEADER = ("VERIFIED MARKET SNAPSHOT — quote these numbers exactly, every price level with "
+                   "its date; do not state other price levels as facts. Windows are calendar days "
+                   "up to as_of; indicator periods are trading sessions.")
+
+
+def render_snapshot(facts: Dict[str, Any]) -> str:
+    """The text the model sees for ``facts``."""
+    return SNAPSHOT_HEADER + "\n" + json.dumps(facts, indent=1)
+
+
+def snapshot(symbol: str, as_of: str, lookback_days: int = 30, *, max_stale_days: int,
+             record: Optional[Callable[[Dict[str, Any]], None]] = None) -> str:
     """The verified numbers a report may quote, every price level with its date.
+
+    ``record``, when given, is called with the facts before they are rendered.
+    The driver passes its run state's recorder, so what the analyst was handed
+    survives in ``state.json`` as data.  Without it only the model's retelling
+    of these numbers is persisted, and a conformance check has nothing
+    authoritative to read (docs/gaps.md, 2026-10-03).
 
     ``lookback_days`` is calendar days up to ``as_of``, the unit of every other
     tool's ``lookback_days``.  It used to be the last N bars while the fields
@@ -244,9 +261,9 @@ def snapshot(symbol: str, as_of: str, lookback_days: int = 30, *, max_stale_days
             "recent_closes": {i.date().isoformat(): round(float(c), 4)
                               for i, c in df["Close"].tail(RECENT_CLOSES).items()},
         }
-        return ("VERIFIED MARKET SNAPSHOT — quote these numbers exactly, every price level with "
-                "its date; do not state other price levels as facts. Windows are calendar days "
-                "up to as_of; indicator periods are trading sessions.\n" + json.dumps(facts, indent=1))
+        if record is not None:
+            record(facts)
+        return render_snapshot(facts)
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"verified snapshot for {symbol}", exc)
 

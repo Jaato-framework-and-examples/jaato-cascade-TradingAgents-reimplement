@@ -603,6 +603,61 @@ restart was mandatory rather than hygienic.
   figure, so the number in CLAUDE.md was simply stale rather than a
   regression introduced by either upgrade. Corrected there.
 
+## The first references (2026-10-03): a rule the trader is held to
+
+The personas carry no investment knowledge. All thirteen total **1,781
+words**, and what is in them is role, protocol and guardrails — which tool to
+call in what order, what belongs in `errors` rather than `warnings`, "the
+snapshot's numbers are the only price levels you may state as facts". Nothing
+in them says anything about markets. So the knowledge the pipeline runs on is
+not hardcoded in prose; it is latent in the model's pretraining, which is
+uninspectable, unversioned, untestable and free to move on a provider
+upgrade. That is the argument for a knowledge base: not refactoring knowledge
+out of prose, but writing down knowledge that exists nowhere.
+
+The shape is taken from the sibling `kb-for-coding-patterns-wiki` ("kb-rip"),
+whose chain is page → atoms → references → capability → check module, and
+whose transferable idea is that **a claim cannot enter the catalogue until an
+executable check reproduces an answer key the check's author never saw**.
+(ADR → ERI → Capability → Feature belongs to a different project,
+`enablement-2.0-kb`, whose checks are declarative constraint YAML.)
+
+- **Conformance is not validity, and only the first is a deterministic
+  check.** "Did this report apply the rule correctly to the snapshot it was
+  given?" is decidable and blind-testable. "Does the rule predict anything?"
+  can only be answered by history, which answers many questions at once and
+  promotes whichever got lucky; that needs pre-registration and an
+  out-of-sample holdout, and it is not a check. The first reference is a
+  conformance rule, and its check says so.
+- **The blind protocol does not yet apply here.** The same hand wrote the
+  rule and its check, so the check attests conformance and nothing more. The
+  caveat is recorded in the catalogue entry's `origin`, so it travels with
+  the reference instead of living in a conversation.
+- **`state.json` kept the model's retelling of the numbers, not the
+  numbers.** ATR appeared only inside prose, so no check could read what the
+  analyst was actually given. `data.snapshot` now takes a `record` callback
+  and the driver passes `RunState.record_snapshot`, so every verified
+  snapshot survives in `state.evidence.snapshots` as data. The check reads
+  only from there and reports `cannot_verify` when it is absent, rather than
+  recomputing from the network: a check that reaches for live data answers
+  differently on different days and stops being a check.
+- **The pilot cannot be re-audited, and that is the lesson that prompted
+  this.** `/tmp/pilot-ws` was cleared; `backtests/pilot/jev.jsonl` kept only
+  derived fields. Sixty arms' reports and proposals are gone, so no rule
+  invented afterwards can ever be measured against them.
+- **The rule binds on real output.** Audited over the four surviving live
+  cells, two conform and two do not: `NVDA 2026-09-22` placed its stop 5.89
+  from entry against an ATR(14) of 6.25 — inside the instrument's own daily
+  range, and that is the call that scored FAIL — and `NVDA 2026-09-29`
+  carried a stop of 217.00 with no entry and a Hold rating.
+- **Wiring.** `references(preload, tools:[listReferences, selectReferences])`
+  on `_base_trader` with `preselected: [stop-placement]`. Preselected rather
+  than selectable because these are obligations: a rule the model must
+  remember to look up is a guardrail that silently lapses. A catalogue large
+  enough to search belongs in `selectable`; this one is not.
+- **Cost.** The end-to-end tier went 5:18 → 7:43 with the plugin on the
+  trader; the unit tier gained 11 tests for the check.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

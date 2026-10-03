@@ -326,7 +326,7 @@ async def run(cfg: RunConfig, *, record_decision: bool = True,
             _replay(board, state)
 
         params = _base_params(cfg, state)
-        tools = host_tools(cfg)
+        tools = host_tools(cfg, record=state.record_snapshot)
 
         try:
             await _analysts(cfg, state, params, tools, journal, cascade_id, board)

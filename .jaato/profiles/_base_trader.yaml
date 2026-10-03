@@ -3,7 +3,16 @@
 # Provider + model live in profiles/<set>/trader.yaml, selected by JAATO_PROFILE_SET.
 name: _base_trader
 description: turns the research plan into a trade proposal.
-plugins: []
+# The binding rules this stage must satisfy reach it as references, not as
+# persona prose: they are versioned, citable, and each one has a conformance
+# check under knowledge/checks/.  `preselected` because they are obligations,
+# not a library — a rule the model has to remember to look up is a guardrail
+# that silently lapses.  A growing catalogue goes in `selectable` instead.
+plugins:
+- references(preload, tools:[listReferences, selectReferences])
+plugin_configs:
+  references:
+    preselected: [stop-placement]
 budget_control:
   # Judge: 1 signal_completion observed, but field-by-field completion can take ~15 calls; 17-81 s.
   # Sizing and mechanics: docs/gaps.md #15.

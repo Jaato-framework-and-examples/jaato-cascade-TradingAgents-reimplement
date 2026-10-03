@@ -1,0 +1,15 @@
+{
+  "id": "stop-placement",
+  "name": "Where a stop goes, and when there is none",
+  "description": "Binding rule for the trader: a stop exists only alongside an entry, sits on the side of entry that invalidates the thesis, and stands at least one ATR(14) away, taken from the verified snapshot. Select when proposing or reviewing an entry, a stop or a sizing note.",
+  "mode": "selectable",
+  "tags": ["rule", "conformance", "trader", "stop-loss", "risk", "position"],
+  "type": "local",
+  "path": "../../../knowledge/rules/stop-placement.md",
+  "links": [],
+  "origin": {
+    "kind": "human",
+    "created_by": "apanoia",
+    "note": "Hand-authored from measured pilot and live-run defects, not distilled from a source. The blind check protocol does not apply to it: the same author wrote the rule and will write its check, so the check attests conformance of a proposal to the rule, never the rule's own validity."
+  }
+}
