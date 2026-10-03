@@ -748,6 +748,48 @@ apply; the research manager catches violations downstream, as it did. Making
 it enforceable would mean either a gate on the judge that reads the transcript
 or giving debaters a completion payload — both larger changes than the rule.
 
+### Measuring whether a rule changes behaviour (2026-10-03): spoiled, and why
+
+Five runs were planned to test whether `stop-placement` changes what the
+trader proposes: NVDA 2026-09-22 ×3 (a cell that previously violated rule 3)
+and 2026-09-04 ×2 (a cell that previously produced conforming levels). The
+ruler was fixed in advance — among proposals carrying a stop, the fraction
+conforming on all three clauses, with proposals carrying no levels excluded
+and the excluded count reported, because a rule that "works" by suppressing
+levels altogether is a degenerate result, not a success.
+
+**Two of the five runs are real.** Three died in the sentiment stage, and the
+harness copied `results/.../state.json` regardless of exit code, so the failed
+runs produced duplicates of the previous successful run and three identical
+rows looked like three observations. Key the snapshot on the exit code that is
+already being recorded.
+
+**They died in sentiment because the decision to drop it had not taken
+effect.** `DEFAULT_ANALYSTS` was changed in `config.py`, but `cli.py` defaulted
+`--analysts` to `",".join(ANALYST_KEYS)`, so the dataclass default is dead
+code for anything started from the command line — which is everything. The
+config said one thing and every actual run did another. `tests/test_cli_defaults.py`
+now pins the parser default to the config default so the two cannot drift.
+
+What the two surviving observations say, which is little:
+
+| cell | before (no rule) | after | check |
+|---|---|---|---|
+| 2026-09-22 | Sell 228.87 / **234.76**, rule 3 violation | Buy 228.87 / 220.50, 8.37 vs ATR 6.25 | compliant |
+| 2026-09-04 | Buy 230.36 / 210.57 | **Hold, no levels** | not_applicable — excluded |
+
+The first flipped direction, so it is not the same proposal placed better; the
+second is exactly the degenerate outcome the protocol predicted and excluded.
+Nothing here supports a claim that the rule changes behaviour, and the
+experiment needs redoing with the CLI fixed, a harness that discards failed
+runs, and a real control arm — the same cells re-run with the rule removed,
+which the original design lacked.
+
+One thing that did hold: the gate resolves its requirement correctly
+(`_required()` returns `stop-placement` with its path). Whether it ever
+refused cannot be read from the daemon log, and absence of a log line is not
+evidence of absence — the same mistake this file records two entries above.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
