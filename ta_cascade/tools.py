@@ -137,7 +137,7 @@ def fundamentals_tools(cfg: RunConfig) -> List[Spec]:
             "Headline valuation, margin, growth and leverage ratios for a symbol.",
             {"symbol": {"type": "string"}},
             ["symbol"],
-            lambda a: data.fundamentals(a["symbol"], as_of),
+            lambda a: data.fundamentals(a["symbol"], as_of, max_stale_days=stale),
         ),
         _spec(
             "get_balance_sheet",

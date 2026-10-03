@@ -134,3 +134,52 @@ def test_a_quiet_window_and_an_unanswered_source_are_different_sentences():
 
     # the two must never be mistaken for one another
     assert quiet.split(":")[0] != silent.split(":")[0]
+
+
+class _Info:
+    """A ticker whose info block is whatever the test says it is."""
+    def __init__(self, info):
+        self.info = info
+
+
+_FULL_INFO = {"shortName": "NVIDIA", "sector": "Technology", "industry": "Semiconductors",
+              "trailingPE": 41.2, "forwardPE": 28.9, "marketCap": 3.4e12, "revenueGrowth": 0.56}
+
+
+def test_a_current_date_gets_the_ratios(monkeypatch):
+    import datetime as dt
+    monkeypatch.setattr(data, "_ticker", lambda s: _Info(_FULL_INFO))
+    today = dt.date.today().isoformat()
+    text = data.fundamentals("NVDA", today, max_stale_days=7)
+    assert not text.startswith(data.UNAVAILABLE)
+    assert "trailingPE" in text and "forwardPE" in text
+
+
+def test_a_historical_date_is_refused_the_ratios_not_merely_warned(monkeypatch):
+    """The info block is undated: every ratio describes TODAY. Handing them to a
+    cell six months back is lookahead — today's multiple already reflects what
+    happened after the as-of date, so a backtest could manufacture skill from
+    hindsight. It used to be served with a note, which is not a clamp: the
+    numbers were still in the model's context. The pilot ran that way."""
+    import datetime as dt
+    monkeypatch.setattr(data, "_ticker", lambda s: _Info(_FULL_INFO))
+    old = (dt.date.today() - dt.timedelta(days=180)).isoformat()
+    text = data.fundamentals("NVDA", old, max_stale_days=7)
+
+    assert text.startswith(data.UNAVAILABLE)
+    for leaked in ("trailingPE", "forwardPE", "marketCap", "revenueGrowth"):
+        assert leaked not in text, f"{leaked} leaked into a historical cell"
+    # identity does not move with the price, so it survives
+    assert "NVIDIA" in text and "Semiconductors" in text
+    assert "get_statement" in text          # points at the point-in-time source
+
+
+def test_the_boundary_is_the_same_staleness_limit_the_price_layer_uses(monkeypatch):
+    import datetime as dt
+    monkeypatch.setattr(data, "_ticker", lambda s: _Info(_FULL_INFO))
+    inside = (dt.date.today() - dt.timedelta(days=3)).isoformat()
+    outside = (dt.date.today() - dt.timedelta(days=30)).isoformat()
+    assert "trailingPE" in data.fundamentals("NVDA", inside, max_stale_days=7)
+    assert "trailingPE" not in data.fundamentals("NVDA", outside, max_stale_days=7)
+    # and the limit is the caller's, not a constant baked in here
+    assert "trailingPE" in data.fundamentals("NVDA", outside, max_stale_days=60)
