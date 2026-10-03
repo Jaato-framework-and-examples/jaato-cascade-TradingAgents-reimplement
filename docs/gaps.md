@@ -1033,6 +1033,67 @@ price and MiniMax does not either; it needs one run on `openrouter_sonnet` to
 confirm the money column fills. The plumbing carries whatever the provider
 reports.
 
+### What a historical cell can actually see (2026-10-03)
+
+Before committing hours to a 600-cell eval, each analyst's inputs were probed
+at four as-of dates. Three of the four input paths had changed that day, and a
+backtest that discovers its own blind spots mid-run wastes the whole run.
+
+| input | recent | 6 mo | 1 yr | 2 yr |
+|---|---|---|---|---|
+| price / indicators / snapshot | ok | ok | ok | ok |
+| company news (Finnhub) | ok | ok | **gone** | gone |
+| global news (Finnhub general) | **unavailable** | unavailable | unavailable | unavailable |
+| fundamentals ratios | ok | withheld | withheld | withheld |
+| statements | ok | ok | ok | **gone** |
+| macro (FRED, vintage-pinned) | ok | ok | ok | ok |
+| sentiment | disabled | disabled | disabled | disabled |
+
+**Finnhub's free tier stops at about twelve months** — 250 articles a week at
+8 months, 247 at 11, 99 at 12, and **zero** at 13 and beyond, returned as HTTP
+200 with an empty array rather than an error. **Global news is unusable for any
+backtest at all**: Finnhub's general feed takes no date range and carries only
+the last few days, so the coverage clamp refuses every historical window,
+correctly.
+
+**Google News RSS does serve deep history** — `after:`/`before:` in the query
+return correctly dated items at 18 and 30 months. It is not the answer for the
+eval, for two reasons that matter more than depth: volume decays with age (100
+capped recent, 22 at 18 months, 12 at 30), so input quality would be
+non-stationary across the test window and any early-vs-late difference would be
+unattributable; and RSS carries title and date with no summary, so mixing it
+with Finnhub puts a step change in input richness exactly at the 12-month
+boundary. It belongs in the vendor chain for LIVE runs (gaps P1 — today proved
+the case, when one dead vendor silenced the whole category), not in a
+measurement that needs homogeneous inputs.
+
+**FRED is now wired and is the one unlimited point-in-time source.** The token
+moved from `FRED_API_KEY` — which nothing ever set, so macro was silently
+unavailable for the project's whole life — to `pass://jaato/fred/api-key`,
+alongside Finnhub's, read by `_pass_secret`. `realtime_start`/`realtime_end`
+pin the vintage to the as-of date, so a revised figure cannot leak backwards:
+verified returning VIXCLS as known on 2024-04-03.
+
+**Consequence for the eval design: widen tickers, not history.** A two-year
+window would run its older half as a technical-only pipeline — one analyst with
+real inputs — which tests something other than what was built. So the window is
+capped at roughly 2025-11-01 → 2026-09-22 (news coverage, less five sessions to
+resolve each cell): about 46 weekly dates.
+
+| design | cells | directional | 95% CI |
+|---|---|---|---|
+| 6 tickers x 46 dates | 276 | ~193 | ±7.1 pp |
+| **12 tickers x 46 dates** | **552** | **~386** | **±5.0 pp** |
+
+Twelve tickers rather than six, which independently answers the pilot's
+correlation problem: NVDA and AMD are both AI semis, so its twelve cells over
+two names carried far fewer independent observations than twelve suggests.
+
+And the pre-registration must name what is being tested: with sentiment
+disabled, no global news and no current ratios, this is a REDUCED pipeline —
+market, news, statements-only fundamentals, and macro. Worth measuring, but not
+the four-analyst design.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

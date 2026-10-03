@@ -406,8 +406,19 @@ for `rules_read`.
 ## 7. The data layer's contract (keep it)
 
 - Every public function returns `str` and never raises; the failure path
-  returns `_unavailable(...)` text. Unknown indicator names, missing
-  `FRED_API_KEY`, network errors, empty frames all become sentences.
+  returns `_unavailable(...)` text. Unknown indicator names, a missing
+  credential, network errors, empty frames all become sentences.
+- **Credentials come from the pass store, one entry each, never a chain**
+  (`_pass_secret`): `pass://jaato/finnhub/api-key`, `pass://jaato/fred/api-key`.
+  A key that can arrive from several places fails in several ways and the one
+  that matters is silent — `macro()` read `FRED_API_KEY` from the environment,
+  nothing ever set it, and macro data was quietly unavailable for the life of
+  the project.
+- **`macro()` is vintage-pinned** (`realtime_start`/`realtime_end` at `as_of`),
+  so a revised figure cannot leak backwards into a historical cell: a backtest
+  sees the number the market saw. It is the only input with unlimited
+  point-in-time history — company news stops at ~12 months (Finnhub free tier),
+  statements at ~2 years, and the `info` block is withheld for any past date.
 - `as_of` bounds everything; `end_date` arguments are clamped to it.
 - Indicators are computed in pandas (`compute_indicators`): SMA 20/50/200,
   EMA 10, RSI 14 (Wilder), MACD 12/26/9, Bollinger 20/2, ATR 14, VWMA 20.
