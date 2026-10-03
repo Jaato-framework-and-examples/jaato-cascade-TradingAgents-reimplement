@@ -1,12 +1,45 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["recommendation", "rationale", "strategic_actions", "errors", "warnings"],
+  "required": [
+    "recommendation",
+    "rationale",
+    "strategic_actions",
+    "errors",
+    "warnings"
+  ],
   "properties": {
-    "recommendation": {"type": "string", "enum": ["Buy", "Overweight", "Hold", "Underweight", "Sell"]},
-    "rationale": {"type": "string", "description": "The deciding arguments from the debate and which reports supported them."},
-    "strategic_actions": {"type": "string", "description": "What to do now and what evidence would change the recommendation."},
-    "errors": {"type": "array", "items": {"type": "string"}},
-    "warnings": {"type": "array", "items": {"type": "string"}}
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "Buy",
+        "Overweight",
+        "Hold",
+        "Underweight",
+        "Sell"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "The deciding arguments from the debate and which reports supported them."
+    },
+    "strategic_actions": {
+      "type": "string",
+      "description": "What to do now and what evidence would change the recommendation."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Why this stage could not produce its result, if it could not. An EMPTY ARRAY means there was no error and the payload stands \u2014 never a placeholder such as \"none\", \"n/a\" or \"\". A non-empty errors array STOPS THE RUN, so put anything that is merely a caveat in warnings."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Caveats that do not invalidate the result: a source that was unavailable, a number that could not be verified, an assumption made. An EMPTY ARRAY means there are none \u2014 never a placeholder. Warnings never stop the run."
+    }
   }
 }

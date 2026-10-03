@@ -839,6 +839,60 @@ body parses as `{plugin: None}`, and `_merge_profiles` does `.update(None)`:
 dies with a traceback and exit 120, emitting no JSON; the daemon reaches the
 same code at session creation. Reproduced with a two-file workspace.
 
+### First live runs on MiniMax-M3 (2026-10-03): three contract gaps, no provider fault
+
+Four runs of NVDA 2026-09-29 on the new `minimax_m3` set. The pipeline now
+completes end to end on it. **Nothing that failed was a MiniMax defect**: each
+failure was a place where the contract specified the payload's *structure* and
+never its *meaning*, which Sonnet had been filling in from habit.
+
+- **The `prose_tool_calls` quirk is not a problem here.** PR #23 flagged it as
+  the main risk. The market analyst drove a three-call tool loop
+  (`get_price_history`, `get_indicators`, `get_verified_snapshot`) and
+  signalled a gated completion against the strict `analyst_report` schema,
+  with no provider error. The trader later did the heavier pattern —
+  `listReferences`, `selectReferences`, `readFile` — and passed the
+  `rules_read` gate, which refuses the completion if the rule was not opened.
+- **`errors: ["none"]`.** M3 filled the required array with a placeholder and
+  the driver, which treats a non-empty `errors[]` as `StageFailed`, killed a
+  stage that had no error. Only `analyst_report.json` had ever documented the
+  convention; the other four schemas described `errors` not at all. All five
+  now state that an empty array is the signal, that a placeholder is wrong,
+  and that **a non-empty errors array stops the run**, so a caveat belongs in
+  `warnings`. Fixed in the contract, not by teaching the driver to ignore the
+  string "none" — that would have passed this run and left the ambiguity for
+  the next model and the next field.
+- **A demanded `CLAUDE.md`.** The portfolio manager reported as an error that
+  it could not read the repository's convention file — "no filesystem tool
+  enabled for this profile" — and stopped the run at the last stage. Nothing
+  in our instructions, our personas or the framework's base layer mentions
+  that file; it is the model's own prior about workspaces. `00-team.md` now
+  states that the session's inputs are the prompt, its tools and any reference
+  it is told to read, that no project documentation exists to consult and none
+  is missing, and that an error is what stopped you producing a result while
+  anything worked around is a warning.
+
+Both fixes are provider-agnostic and apply to every set.
+
+**What the completed run produced**, and why it matters beyond the migration:
+
+    rating Buy | trader Buy, entry 227.21, stop 216.98
+    ATR(14) 6.0162, distance 10.23 | check: compliant, no violations
+
+This is the first proposal in the project that carries levels, demonstrably
+read `stop-placement`, and conforms on all three clauses. Every earlier
+attempt either never reached the rule or proposed no levels, which a rule
+about stops cannot bind. It is one observation on one cell with two analysts,
+so it is evidence the mechanism works end to end, not evidence about the rule's
+effect on behaviour — that still needs the control arm.
+
+Also: the analyst set was `market,fundamentals`, because **`get_company_news`
+returned zero articles for NVDA over 2026-08-30 to 2026-09-29**. A month with
+no NVDA coverage is not a plausible state of the world, so the fetcher or its
+endpoint is the likely fault rather than the news supply. With sentiment
+already out, two of four analysts are now unavailable and the pipeline is
+deciding on price and fundamentals alone — which the personas do not say.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
