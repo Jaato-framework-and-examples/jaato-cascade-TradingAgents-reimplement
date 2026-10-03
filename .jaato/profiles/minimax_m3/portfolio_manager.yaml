@@ -1,0 +1,16 @@
+# portfolio_manager — minimax set: MiniMax-M3.
+name: portfolio_manager
+description: final decision after the risk discussion.
+inherits:
+- _base_portfolio_manager
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax
+plugin_configs:
+  minimax:
+    api_params:
+      # M3 maps this to thinking: {type: adaptive}. No temperature here:
+      # `explain provider minimax` warns that reasoning models commonly
+      # reject an explicit 0.0, and omitting a parameter is never a 400.
+      enable_thinking: true
