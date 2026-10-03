@@ -280,27 +280,62 @@ def _r(v) -> Optional[float]:
 
 # ---------------------------------------------------------------- fundamentals
 
-_INFO_KEYS = (
-    "shortName", "sector", "industry", "marketCap", "enterpriseValue", "trailingPE",
-    "forwardPE", "priceToBook", "enterpriseToEbitda", "profitMargins", "operatingMargins",
-    "returnOnEquity", "revenueGrowth", "earningsGrowth", "debtToEquity", "currentRatio",
-    "freeCashflow", "dividendYield", "beta", "sharesOutstanding",
+_INFO_IDENTITY = ("shortName", "sector", "industry")
+"""What the company IS. Does not move with the price, so it is safe at any date."""
+
+_INFO_CURRENT = (
+    "marketCap", "enterpriseValue", "trailingPE", "forwardPE", "priceToBook",
+    "enterpriseToEbitda", "profitMargins", "operatingMargins", "returnOnEquity",
+    "revenueGrowth", "earningsGrowth", "debtToEquity", "currentRatio", "freeCashflow",
+    "dividendYield", "beta", "sharesOutstanding",
 )
+"""What the company is WORTH, and how it is performing, AS OF TODAY.
+
+yfinance's info block has no vintage: every one of these describes the present.
+A multiple quoted today already reflects everything that happened since a past
+as-of date, so handing these to a historical cell is lookahead — the analyst
+reads the future and calls it analysis, and a backtest can manufacture skill
+out of it.  Served only when the as-of date IS the present.
+"""
+
+_INFO_KEYS = _INFO_IDENTITY + _INFO_CURRENT
 
 
-def fundamentals(symbol: str, as_of: str) -> str:
-    """Headline valuation and quality ratios from the ticker's info block.
+def fundamentals(symbol: str, as_of: str, *, max_stale_days: int) -> str:
+    """The ticker's info block, clamped to what ``as_of`` is allowed to see.
 
-    The info block is *current*, not point-in-time; the text says so, so a
-    backtest reader can discount it.
+    The block is undated: every ratio in it describes TODAY.  Until
+    2026-10-03 this function served all of them with a note saying so, which
+    is not a clamp — the numbers were still in the model's context.  For a
+    cell dated six months ago that is lookahead on valuation: today's multiple
+    already reflects everything that happened after the as-of date, so a
+    backtest reading it can manufacture skill out of hindsight.  The pilot ran
+    this way.
+
+    So the current ratios are served only when ``as_of`` is the present,
+    judged by the same staleness limit the price layer uses.  A historical
+    cell gets the company's identity — which does not move — and is told
+    plainly that the rest was withheld, rather than being handed it with a
+    caveat it cannot act on.  ``statement()`` is unaffected: it already
+    filters to periods ending on or before ``as_of``, and is the
+    point-in-time source for a backtest.
     """
     try:
         info = _ticker(symbol).info or {}
-        picked = {k: info.get(k) for k in _INFO_KEYS if info.get(k) is not None}
+        behind = (dt.date.today() - _date(as_of)).days
+        historical = behind > max_stale_days
+        keys = _INFO_IDENTITY if historical else _INFO_KEYS
+        picked = {k: info.get(k) for k in keys if info.get(k) is not None}
         if not picked:
             raise LookupError("empty info block")
-        note = ("NOTE: these ratios are as reported today, not as of "
-                f"{as_of}; treat them as approximate for historical analysis.\n")
+        if historical:
+            note = (f"{UNAVAILABLE}: the info block's valuation and performance ratios are undated "
+                    f"— they describe today, {behind} days after {as_of} — so quoting them here "
+                    f"would be reading the future. They are withheld. Use `get_statement` for "
+                    f"figures dated on or before {as_of}; what follows is only the company's "
+                    f"identity.\n")
+        else:
+            note = f"Ratios as reported now, which for {as_of} is current.\n"
         return note + json.dumps(picked, indent=1, default=str)
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"fundamentals for {symbol}", exc)

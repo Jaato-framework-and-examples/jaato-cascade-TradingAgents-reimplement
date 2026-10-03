@@ -943,6 +943,48 @@ relevance filtering rather than less. The per-category vendor chain of
 `docs/gaps.md` P1 is still not built; this is one vendor replacing another, and
 the next 404 will go just as quiet.
 
+### The fundamentals analyst had lookahead, and the pilot ran with it (2026-10-03)
+
+`fundamentals()` served yfinance's `info` block — trailing and forward P/E,
+market cap, margins, growth, targets — to every cell, with a note saying the
+figures were current rather than as-of. **A note is not a clamp.** The numbers
+were in the model's context either way, and the info block is undated: every
+ratio in it describes today. For a cell dated six months back, today's multiple
+already reflects everything that happened after the as-of date, so the analyst
+was reading the future and calling it analysis.
+
+This is the one failure mode a prediction test cannot survive, because it
+manufactures skill rather than hiding it. And the pilot ran this way: all four
+analysts, sixty cells dated April–August, each shown October's valuation.
+
+It was also a contract violation, not merely a caveat. CLAUDE.md §7 says
+`as_of` bounds everything and nothing after it exists; the sibling
+`statement()` honours that by filtering to periods ending on or before `as_of`.
+The info block was the one source that warned instead of clamping.
+
+Now the block is split by what moves:
+
+- `_INFO_IDENTITY` (`shortName`, `sector`, `industry`) — what the company IS.
+  Does not move with the price, served at any date.
+- `_INFO_CURRENT` (the seventeen valuation, margin, growth and balance ratios)
+  — what it is WORTH today. Served only when `as_of` is the present, judged by
+  the same `max_stale_days` the price layer already uses to refuse stale bars.
+
+A historical cell now gets an explicit refusal naming the gap in days and
+pointing at `get_statement`, which remains the point-in-time source:
+
+    DATA_UNAVAILABLE: the info block's valuation and performance ratios are
+    undated — they describe today, 183 days after 2026-04-03 — so quoting them
+    here would be reading the future. They are withheld. Use `get_statement`
+    for figures dated on or before 2026-04-03; what follows is only the
+    company's identity.
+
+**Consequence for any backtest, including the pilot's numbers.** Every
+historical result produced before this change had six months or more of
+valuation hindsight available to one of its four analysts. The pilot's
+headline figures were already uninterpretable for want of statistical power
+(26 directional calls, ±19 pp); this is a second, independent reason not to
+read anything into them.
 ### Every session is now accounted for (2026-10-03)
 
 The question "what did that run cost?" had no answer: it is not in the daemon

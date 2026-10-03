@@ -418,8 +418,16 @@ for `rules_read`.
 - Stale prices are refused, not quoted: `ohlcv`, `indicators` and
   `snapshot` return an UNAVAILABLE sentence when the newest bar is more
   than `RunConfig.max_stale_days` (7) calendar days before the date asked.
-- yfinance `info` is not point-in-time; `fundamentals()` says so in its
-  text. Statements are filtered by period-end date, with a filing-lag note.
+- **yfinance `info` is undated — every ratio in it describes TODAY — so
+  `fundamentals()` CLAMPS it rather than warning about it.** Identity
+  (`shortName`, `sector`, `industry`) is served at any date; the seventeen
+  valuation, margin and growth ratios only when `as_of` is the present, by the
+  same `max_stale_days` the price layer uses. A historical cell is refused them
+  and pointed at `get_statement`. Serving them with a note was lookahead: the
+  numbers reached the model anyway, and a backtest reading today's multiple for
+  a cell six months back can manufacture skill out of hindsight. The pilot ran
+  that way. Statements are filtered by period-end date, with a filing-lag note,
+  and are the point-in-time source.
 - **News comes from Finnhub** (`pass://jaato/finnhub/api-key`, read by the
   DRIVER from the pass store, not an env var). `company-news` takes `from`/`to`
   natively, so a historical window is SERVED rather than filtered out of a
