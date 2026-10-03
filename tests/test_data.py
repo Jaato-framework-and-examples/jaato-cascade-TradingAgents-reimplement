@@ -111,5 +111,26 @@ def test_news_window_filter():
     import datetime as dt
     items = [(dt.datetime(2026, 1, 14, tzinfo=dt.timezone.utc), "in", "src", ""),
              (dt.datetime(2026, 1, 20, tzinfo=dt.timezone.utc), "future", "src", "")]
-    text = data._format_news(items, dt.date(2026, 1, 8), dt.date(2026, 1, 15), 10)
+    text = data._format_news(items, dt.date(2026, 1, 8), dt.date(2026, 1, 15), 10, served=len(items))
     assert "in" in text and "future" not in text
+
+
+def test_a_quiet_window_and_an_unanswered_source_are_different_sentences():
+    """CLAUDE.md §7: an empty window is evidence of absence, a failed fetch is
+    absence of evidence. They were one message until yfinance's news endpoint
+    started answering 404 and the pipeline was told a month had been quiet."""
+    import datetime as dt
+    served = [(dt.datetime(2026, 1, 20, tzinfo=dt.timezone.utc), "later", "src", "")]
+    window = (dt.date(2026, 1, 8), dt.date(2026, 1, 15))
+
+    quiet = data._format_news(served, *window, 10, served=len(served))
+    assert quiet.startswith("NO_DATA")
+    assert "quiet" in quiet and "1 article" in quiet
+
+    silent = data._format_news([], *window, 10, served=0)
+    assert silent.startswith(data.UNAVAILABLE)
+    assert "no answer" in silent
+    assert "do NOT conclude" in silent
+
+    # the two must never be mistaken for one another
+    assert quiet.split(":")[0] != silent.split(":")[0]

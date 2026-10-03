@@ -7,9 +7,11 @@ owns — session opening, host-tool registration, prompt composition, the two
 debate loops, journaling and resume, the decision log — plus the daemon's
 own profile contract (schemas, completion gates, spawn-param validation).
 
-The daemon is started on a private socket with a private pid file and
-stopped afterwards.  Skipped when ``jaato_server`` is not importable (the SDK is
-installed without the daemon).
+It runs against the daemon ALREADY RUNNING (``/tmp/jaato.sock``, or
+``TA_E2E_SOCKET``), in a private temp workspace: isolation is per session —
+workspace, config_root and the ``.env`` that selects the echo set all travel
+with each session — so no second runner pool is warmed for it.  Skipped when
+``jaato_server`` is not importable; FAILS, loudly, when no daemon is there.
 """
 from __future__ import annotations
 
@@ -17,8 +19,6 @@ import asyncio
 import os
 import re
 import shutil
-import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
@@ -43,28 +43,43 @@ def _short_tmp() -> Path:
     return Path(tempfile.mkdtemp(prefix="tac-"))
 
 
+DEFAULT_SOCKET = "/tmp/jaato.sock"
+"""The daemon this tier talks to.  ``TA_E2E_SOCKET`` overrides it."""
+
+
 @pytest.fixture(scope="module")
 def workspace():
+    """A private workspace on the RUNNING daemon.
+
+    The tier used to start a daemon of its own, because jaato#898 allocated
+    pool slots per cascade and a second tenant starved until the first
+    finished — sharing would have stalled this test behind any other cascade
+    and stalled that cascade behind this test.  #898 is CLOSED, so the reason
+    has expired, and a private daemon costs a second warm runner pool (~700 MB)
+    that nothing here needs: the pipeline is strictly sequential.
+
+    Isolation is per SESSION, not per daemon: the workspace, its `config_root`
+    and its `.env` (which selects the echo set) all travel with each session,
+    which is how one daemon serves this tier and another project's set at the
+    same time.
+
+    A missing daemon FAILS rather than skips.  A skip is how this tier silently
+    stopped running for a week after jaato#1079 renamed the package, and a
+    green suite that tested nothing is worse than a red one.
+    """
+    sock = Path(os.environ.get("TA_E2E_SOCKET", DEFAULT_SOCKET))
+    if not sock.exists():
+        pytest.fail(
+            f"no daemon socket at {sock}. This tier runs against the daemon you already have: "
+            f"start one with `python -m jaato_server --daemon --ipc-socket {sock} "
+            f"--pid-file /tmp/jaato.pid`, or point TA_E2E_SOCKET at another.")
     ws = _short_tmp()
     shutil.copytree(REPO / ".jaato", ws / ".jaato",
                     ignore=shutil.ignore_patterns("logs", "journal", "*.jsonl"))
     (ws / ".env").write_text("JAATO_PROFILE_SET=echo\n")
-    sock, pid = ws / "d.sock", ws / "d.pid"
-    subprocess.run([sys.executable, "-m", "jaato_server", "--ipc-socket", str(sock),
-                    "--pid-file", str(pid), "--daemon"], check=True, timeout=180)
-    # ``--daemon`` returns as soon as the process is forked; the socket appears
-    # once plugin discovery finishes (a cold start), so wait for it here rather
-    # than relying on the client's autostart wait.
-    deadline = time.monotonic() + 180
-    while not sock.exists():
-        if time.monotonic() > deadline:
-            raise RuntimeError(f"daemon did not bind {sock} within 180s")
-        time.sleep(0.5)
     try:
         yield ws, sock
     finally:
-        subprocess.run([sys.executable, "-m", "jaato_server", "--stop", "--pid-file", str(pid),
-                        "--ipc-socket", str(sock)], timeout=60)
         shutil.rmtree(ws, ignore_errors=True)
 
 

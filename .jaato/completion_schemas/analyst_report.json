@@ -1,13 +1,57 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["report", "stance", "confidence", "tools_used", "errors", "warnings"],
+  "required": [
+    "report",
+    "stance",
+    "confidence",
+    "tools_used",
+    "errors",
+    "warnings"
+  ],
   "properties": {
-    "report": {"type": "string", "description": "The full report in markdown, written for the researchers who read it next."},
-    "stance": {"type": "string", "enum": ["bullish", "bearish", "neutral"], "description": "Your overall read of the evidence."},
-    "confidence": {"type": "string", "enum": ["low", "medium", "high"], "description": "How much the available data supports the stance."},
-    "tools_used": {"type": "array", "items": {"type": "string"}, "description": "Names of the data tools you called (empty if you had none)."},
-    "errors": {"type": "array", "items": {"type": "string"}, "description": "Why no report could be written, if it could not. Empty when the report stands."},
-    "warnings": {"type": "array", "items": {"type": "string"}, "description": "Data that was unavailable or suspect; the report stands despite it."}
+    "report": {
+      "type": "string",
+      "description": "The full report in markdown, written for the researchers who read it next."
+    },
+    "stance": {
+      "type": "string",
+      "enum": [
+        "bullish",
+        "bearish",
+        "neutral"
+      ],
+      "description": "Your overall read of the evidence."
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "description": "How much the available data supports the stance."
+    },
+    "tools_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Names of the data tools you called (empty if you had none)."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Why this stage could not produce its result, if it could not. An EMPTY ARRAY means there was no error and the payload stands \u2014 never a placeholder such as \"none\", \"n/a\" or \"\". A non-empty errors array STOPS THE RUN, so put anything that is merely a caveat in warnings."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Caveats that do not invalidate the result: a source that was unavailable, a number that could not be verified, an assumption made. An EMPTY ARRAY means there are none \u2014 never a placeholder. Warnings never stop the run."
+    }
   }
 }

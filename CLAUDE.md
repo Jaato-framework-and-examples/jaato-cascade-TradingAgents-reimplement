@@ -87,8 +87,12 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 #   --no-journal / --clear-journal / --no-memory / --socket PATH / --workspace DIR
 #   --display auto|board|lines   auto draws the live board on a terminal, plain lines when piped
 
-# NOTE: two cascades on one daemon starve each other (jaato#898, docs/gaps.md).
-# For a run that must not be interrupted, give it its own daemon and --socket.
+# NOTE: jaato#898 (a second cascade starving until the first finished) is CLOSED.
+# One daemon serves several tenants: workspace, config_root and .env travel with
+# each SESSION, which is how it serves this workspace and another project's
+# profile set at once. The end-to-end tier shares it rather than starting one.
+# Its runner pool scales with concurrent demand, so a loaded box is loaded by
+# the tenants, not by any one of them.
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
@@ -409,6 +413,21 @@ for `rules_read`.
   than `RunConfig.max_stale_days` (7) calendar days before the date asked.
 - yfinance `info` is not point-in-time; `fundamentals()` says so in its
   text. Statements are filtered by period-end date, with a filing-lag note.
+- **News comes from Finnhub** (`pass://jaato/finnhub/api-key`, read by the
+  DRIVER from the pass store, not an env var). `company-news` takes `from`/`to`
+  natively, so a historical window is SERVED rather than filtered out of a
+  recent feed — which is what yfinance did until its news endpoint began
+  answering 404 on 2026-10-03, and why the pilot's sixty April–August cells ran
+  with no company news at all. `global_news` uses Finnhub's general feed, which
+  takes NO date range and carries only the last few days: it compares the span
+  it actually carries with the window asked for and reports a window outside it
+  as unavailable, never as quiet.
+- **Three kinds of nothing, three sentences.** `DATA_UNAVAILABLE` = we were not
+  served (a 404, a missing credential, a feed that cannot cover the window);
+  `NO_DATA` = the source served items and none fell in the window, so the
+  window really was quiet; articles = what we saw. Collapsing the first two
+  lets a model reason about a silence nobody observed, which is how a dead
+  endpoint read as "a quiet month for NVDA".
 - Social: `stocktwits_messages` tallies user-applied Bullish/Bearish labels;
   `reddit_posts` reads the `wallstreetbets`, `stocks`, `investing` search
   feeds, strips Reddit's HTML body markers, and reports per-subreddit
@@ -427,8 +446,9 @@ for `rules_read`.
   No network, no daemon, under a second.
 - **End to end** (`tests/test_pipeline_echo.py`, marked `daemon`): copies
   `.jaato/` to a short temp workspace, writes `.env` with
-  `JAATO_PROFILE_SET=echo`, starts a daemon on a private socket and pid
-  file, waits for the socket, runs the whole pipeline twice (the second run
+  `JAATO_PROFILE_SET=echo`, and runs against the daemon ALREADY RUNNING
+  (`/tmp/jaato.sock`, or `TA_E2E_SOCKET`) rather than starting a private
+  file, runs the whole pipeline twice (the second run
   resolves the first run's decision through the reflector and injects the
   lesson), then a resume test with a pre-seeded journal and a spy on
   `open_stage`, then a budget test: in a copy of the workspace it caps one
