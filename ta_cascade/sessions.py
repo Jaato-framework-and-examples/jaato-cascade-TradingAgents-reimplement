@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from jaato_sdk import ClientType, IPCClient, IPCRecoveryClient
 
+from . import sessionlog
 from .config import RunConfig
 from .observer import OBSERVED_EVENT_TYPES, StageObserver
 
@@ -56,7 +57,7 @@ def open_stage(
     bad = {k: type(v).__name__ for k, v in params.items() if not isinstance(v, str)}
     if bad:
         raise TypeError(f"agent_params must be strings; got {bad}")
-    return IPCRecoveryClient.session(
+    inner = IPCRecoveryClient.session(
         socket_path=cfg.socket,
         client_type=ClientType.API,
         auto_start=cfg.auto_start,
@@ -71,6 +72,47 @@ def open_stage(
         cascade_driver_id=cascade_id,
         client_tools=client_tools,
     )
+    return _accounted(inner, cfg, profile=profile, agent=agent, cascade_id=cascade_id)
+
+
+async def _consumption(session) -> Dict[str, Any]:
+    """What the daemon measured for this session, or why it could not say.
+
+    Must be asked while the session is still ATTACHED: once the context
+    exits there is nobody holding it to answer.  The failure path records
+    the reason rather than a zero, so a reader can distinguish a session
+    that cost nothing from one nobody measured.
+    """
+    try:
+        return {"consumption": (await session.client.get_diagnostics()).consumption}
+    except (TimeoutError, ConnectionError, ValueError, AttributeError, OSError) as exc:
+        return {"consumption_error": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+@contextlib.asynccontextmanager
+async def _accounted(inner, cfg: RunConfig, *, profile: str, agent: str, cascade_id: str):
+    """Wrap a stage's session so the run keeps an account of it.
+
+    The ``ended`` line is written from the ``finally``, which runs INSIDE the
+    session context — the one window in which the daemon can still be asked
+    what the session spent.  It is written for a stage that raised too: a
+    failed stage costs money, and a cost record that omits failures
+    understates every bill it appears in.
+    """
+    async with inner as session:
+        sid = getattr(session, "session_id", "") or ""
+        sessionlog.write(cfg, "started", sid, stage=profile, agent=agent, cascade_id=cascade_id)
+        failed = None
+        try:
+            yield session
+        except BaseException as exc:          # noqa: BLE001 — recorded, never swallowed
+            failed = f"{type(exc).__name__}: {exc}"[:300]
+            raise
+        finally:
+            terminus = getattr(session, "terminus", None)
+            sessionlog.write(cfg, "ended", sid, stage=profile, agent=agent, cascade_id=cascade_id,
+                             reason=getattr(terminus, "reason", None) if terminus else None,
+                             failed=failed, **await _consumption(session))
 
 
 @contextlib.asynccontextmanager
