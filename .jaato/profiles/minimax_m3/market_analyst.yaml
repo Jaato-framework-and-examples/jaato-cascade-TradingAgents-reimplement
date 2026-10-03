@@ -1,0 +1,9 @@
+# market_analyst — minimax set: MiniMax-M3.
+name: market_analyst
+description: 'market analyst stage: data tools in, a typed report out.'
+inherits:
+- _base_market_analyst
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax

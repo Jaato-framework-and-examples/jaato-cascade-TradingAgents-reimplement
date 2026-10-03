@@ -1,0 +1,9 @@
+# fundamentals_analyst — minimax set: MiniMax-M3.
+name: fundamentals_analyst
+description: 'fundamentals analyst stage: data tools in, a typed report out.'
+inherits:
+- _base_fundamentals_analyst
+- _minimax_app
+plugins: []
+model: MiniMax-M3
+provider: minimax

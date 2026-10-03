@@ -790,6 +790,55 @@ One thing that did hold: the gate resolves its requirement correctly
 refused cannot be read from the daemon log, and absence of a log line is not
 evidence of absence — the same mistake this file records two entries above.
 
+### A second provider set: MiniMax-M3 (2026-10-03)
+
+`.jaato/profiles/minimax_m3/` binds the same thirteen stages to `MiniMax-M3`
+on jaato's native `minimax` provider. Nothing else moved: every stage profile
+is `inherits: [_base_<agent>, _minimax_app]` plus `model` and `provider`, so
+the stage determinism — gates, schemas, ceilings, the references wiring —
+stays in the tier-1 bases and a set swaps only the binding. The credential is
+`pass://jaato/minimax/api-key`, resolved daemon-side and proven with
+`jaato-doctor --secret`.
+
+`JAATO_PROFILE_SET` still selects `openrouter_sonnet`. Keeping both sets is
+the point: the same cell can be run on either, which is the control arm the
+stop-placement experiment lacked.
+
+Differences worth knowing before trusting a run on it:
+
+- **No prompt caching.** OpenRouter has it, minimax does not. This cascade
+  re-sends a growing context to every stage — the judges read both debate
+  transcripts plus every report — so it benefits from caching more than a
+  single-turn application would. M3 is far cheaper per token, so this is
+  likely still a large net win, but not by the headline per-token ratio.
+- **The `prose_tool_calls` quirk.** `explain provider minimax` names it and
+  does not describe it, and there is no `explain quirks` topic. This pipeline
+  rests on `signal_completion` being called as a tool against a strict schema,
+  plus the market analyst's real tool loop, so the quirk is directly relevant
+  and currently unmeasured here. kb-rip runs M3 across seven session kinds
+  with completion processors and strict gates, which is good evidence that
+  gated stages work on this provider.
+- **No `temperature` is set.** `explain provider minimax` warns that reasoning
+  models commonly reject an explicit `0.0`, and that omitting a parameter is
+  never the cause of a 400. The OpenRouter set pins `temperature: 0.0`; this
+  one does not, so runs on the two sets are not sampling-equivalent and a
+  difference between them is not evidence about the model alone.
+- **Thinking** is `enable_thinking: true` on `research_manager` and
+  `portfolio_manager`, matching the OpenRouter set's intent. M3 maps it to
+  `thinking: {type: adaptive}`; there is no `thinking_level` knob here.
+
+**A framework bug found building it (jaato, server 1.3.0, reproduced on
+`3204f77d`):** a profile that names a plugin under `plugin_configs` with no
+body parses as `{plugin: None}`, and `_merge_profiles` does `.update(None)`:
+
+    File ".../plugins/subagent/config.py", line 4361, in _merge_profiles
+        merged_configs[plugin_name].update(config)
+    TypeError: 'NoneType' object is not iterable
+
+`jaato-scaffold validate` exists to diagnose malformed profiles and instead
+dies with a traceback and exit 120, emitting no JSON; the daemon reaches the
+same code at session creation. Reproduced with a two-file workspace.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

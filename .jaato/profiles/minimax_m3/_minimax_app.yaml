@@ -1,0 +1,17 @@
+# Shared MiniMax identity for every stage of this set.
+#
+# Holds ONLY the credential, for the same reason the OpenRouter fragment does:
+# plugin_configs merges one level deep (per key under the plugin name) and a
+# nested dict is REPLACED, so an `api_params` here would be silently dropped
+# by any stage that sets its own.
+name: _minimax_app
+description: MiniMax credential shared by every stage.
+plugins: []
+plugin_configs:
+  minimax:
+    # Resolved daemon-side from the pass store, never an env var in the
+    # workspace .env: a jaato-eval driver arm materialises a fresh workspace
+    # carrying only JAATO_PROFILE_SET, where an env credential would be absent
+    # (jaato #1110, #1112).  `jaato-doctor --secret pass://jaato/minimax/api-key`
+    # proves it resolves.
+    api_key: "pass://jaato/minimax/api-key"
