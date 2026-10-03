@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .backtest import date_grid, write_tasks
 from .board import NullBoard
-from .config import ANALYST_KEYS, RunConfig
+from .config import DEFAULT_ANALYSTS, ANALYST_KEYS, RunConfig
 from .contract import EX_TEMPFAIL, UnknownContract, from_environment
 from .pipeline import StageFailed, run
 
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("ticker")
     a.add_argument("trade_date", help="ISO date the analysis is as of")
     a.add_argument("--asset-type", choices=["stock", "crypto"], default="stock")
-    a.add_argument("--analysts", default=",".join(ANALYST_KEYS),
+    a.add_argument("--analysts", default=",".join(DEFAULT_ANALYSTS),
                    help="comma-separated subset of " + ",".join(ANALYST_KEYS))
     a.add_argument("--debate-rounds", type=int, default=1)
     a.add_argument("--risk-rounds", type=int, default=1)
