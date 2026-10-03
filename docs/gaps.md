@@ -943,6 +943,54 @@ relevance filtering rather than less. The per-category vendor chain of
 `docs/gaps.md` P1 is still not built; this is one vendor replacing another, and
 the next 404 will go just as quiet.
 
+### Every session is now accounted for (2026-10-03)
+
+The question "what did that run cost?" had no answer: it is not in the daemon
+log, and four MiniMax runs went unmeasured for that reason. The answer, taken
+from kb-rip, is one call in one place:
+
+    spend = (await session.client.get_diagnostics()).consumption
+
+asked **while the session is still attached** — once the context exits there is
+nobody holding it to answer — and written to an append-only log.
+`sessions.open_stage` now wraps every stage: a `started` line when it opens, an
+`ended` line from a `finally` INSIDE the session context, carrying the
+terminus reason, the failure if it raised, and the consumption.
+
+Measured on an echo run: 18 lines over 9 sessions, every one measured, with
+`input_tokens_total`, `output_tokens`, `tool_calls` and `elapsed_seconds`.
+A failed stage is logged too — a cost record that omits failures understates
+every bill it appears in.
+
+**`sessionlog.py` is not `journal.py`, deliberately.** The journal exists so a
+failed run can resume and is DELETED when a run succeeds, so a successful run
+leaves no trace of how it went. The session log is never cleared. It lives at
+`results/<ticker>/<date>/sessions.jsonl`, beside the report tree rather than
+under the driver's runtime state, because that is the directory that survives:
+a jaato-eval arm materialises its own workspace and only what the run wrote
+into its results travels with `--keep-workspaces`. The pilot's sixty arms were
+lost for exactly this reason — and `--keep-workspaces` was there all along.
+
+**Three money states, not two.** This is the third time today the same shape
+has caught us, after quiet-vs-unavailable in the news layer:
+
+| state | consumption | cost_usd | means |
+|---|---|---|---|
+| measured, priced | present | a number | OpenRouter — real money |
+| measured, **unpriced** | present | `null` | a subscription plan or no pricing table: effort known, money not applicable |
+| unmeasured | absent | — | the daemon could not be asked; nothing known, not even effort |
+
+MiniMax is a subscription here, so it will always be the middle row.
+Rendering that as `$0.00` would understate every total it joins, and
+`consumption_error` must never read as a tidy zero. Aggregates should report
+"measured 7 of 12" and **withhold a partial cost entirely** rather than sum
+what they have — kb-rip's rule, worth copying verbatim.
+
+Still unproven: `cost_usd` has never been seen populated here. Echo does not
+price and MiniMax does not either; it needs one run on `openrouter_sonnet` to
+confirm the money column fills. The plumbing carries whatever the provider
+reports.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

@@ -142,7 +142,14 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
                            observing(): the read-only observer subscription. The only SDK importer.
   pipeline.py              run(): the graph as control flow; prompts; phases; StageFailed
   state.py                 RunState / DebateTurn; prompt-composition helpers; to_dict/from_dict
-  journal.py               Journal: per-run JSON, load/save/clear (resume)
+  journal.py               Journal: per-run JSON, load/save/clear (resume) — CLEARED on success
+  sessionlog.py            the run's sessions, append-only, NEVER cleared:
+                           results/<ticker>/<date>/sessions.jsonl, one started/ended line each,
+                           with the daemon's `consumption` (tokens, tool calls, seconds, cost_usd
+                           when the provider prices). Asked via get_diagnostics() while the session
+                           is still ATTACHED — after the context exits nobody can answer. Three
+                           money states: priced / measured-but-unpriced (subscription) / unmeasured;
+                           never collapse them, never render unpriced as $0.00.
   memory.py                DecisionLog: JSONL decisions, pending → resolved, past_context(as_of=)
   data.py                  market data: yfinance, FRED, StockTwits, Reddit; deadlines; UNAVAILABLE sentences
   tools.py                 host-tool specs per analyst (closures over the run's as-of date)
