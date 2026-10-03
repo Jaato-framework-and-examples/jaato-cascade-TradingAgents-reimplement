@@ -92,7 +92,7 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
-.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~3 min, starts a private daemon
+.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~5 min, starts a private daemon
 
 # backtests: the driver as a jaato-eval ARM (harness.kind: driver, jaato#1110)
 python -m ta_cascade backtest-tasks pilot --tickers NVDA,AMD --from 2026-04-03 --to 2026-08-28 --every 7
@@ -321,7 +321,7 @@ then text is all it does.
    saw `create_session: no answer within 60.0s`. Anything that runs at
    session-prep must be bounded. Hence `data.with_deadline`,
    `data.gather_with_deadline`, and the prefetch switch.
-2. **`python -m server --daemon` returns before the socket is bound.** A
+2. **`python -m jaato_server --daemon` returns before the socket is bound.** A
    client with `auto_start=False` must wait for the socket file (the test
    fixture polls for it up to 180 s).
 3. **Client autostart can race a busy daemon.** With `auto_start=True` a
@@ -356,7 +356,12 @@ then text is all it does.
    a failed session under the prefetch deadline.
 10. **StockTwits' public symbol stream serves recent messages only**, so a
     historical window is normally empty and reported as quiet. Crypto pairs
-    are addressed as `<BASE>.X`.
+    are addressed as `<BASE>.X`. **Since 2026-09-23 the endpoint answers
+    403 Forbidden to this client**, so the source is *unavailable* rather
+    than quiet — a different sentence in the data contract (§7), and the
+    right one: nothing is inferred from an absence that was never observed.
+    Reddit degraded in the same run (`r/stocks` and `r/investing` failed,
+    `r/wallstreetbets` returned). See `docs/gaps.md`, 2026-09-23.
 11. **The `subagent` plugin README in jaato is stale** (documents
     `background=True` / `get_subagent_result`, which do not exist). Trust
     `jaato-scaffold explain plugin subagent`.

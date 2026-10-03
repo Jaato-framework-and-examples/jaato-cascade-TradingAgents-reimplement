@@ -1,5 +1,6 @@
 # risk_neutral — echo set: deterministic test double, no credentials, no network.
 name: risk_neutral
+description: 'neutral posture in the risk discussion: plain turns, no completion gate.'
 inherits:
 - _base_risk_neutral
 plugins: []

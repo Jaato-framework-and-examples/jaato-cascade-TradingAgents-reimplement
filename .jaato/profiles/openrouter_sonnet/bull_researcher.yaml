@@ -1,5 +1,6 @@
 # bull_researcher — openrouter set: anthropic/claude-sonnet-4.5.
 name: bull_researcher
+description: 'bull side of the investment debate: plain turns, no completion gate.'
 inherits:
 - _base_bull_researcher
 - _openrouter_app

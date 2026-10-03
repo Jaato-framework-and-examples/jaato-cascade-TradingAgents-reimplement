@@ -1,5 +1,6 @@
 # portfolio_manager — echo set: deterministic test double, no credentials, no network.
 name: portfolio_manager
+description: final decision after the risk discussion.
 inherits:
 - _base_portfolio_manager
 plugins: []

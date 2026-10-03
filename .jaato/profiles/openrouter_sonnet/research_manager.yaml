@@ -1,5 +1,6 @@
 # research_manager — openrouter set: anthropic/claude-sonnet-4.5.
 name: research_manager
+description: judge of the investment debate; emits the research plan.
 inherits:
 - _base_research_manager
 - _openrouter_app

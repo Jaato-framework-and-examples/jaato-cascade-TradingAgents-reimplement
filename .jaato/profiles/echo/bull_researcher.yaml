@@ -1,5 +1,6 @@
 # bull_researcher — echo set: deterministic test double, no credentials, no network.
 name: bull_researcher
+description: 'bull side of the investment debate: plain turns, no completion gate.'
 inherits:
 - _base_bull_researcher
 plugins: []

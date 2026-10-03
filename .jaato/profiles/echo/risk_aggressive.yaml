@@ -1,5 +1,6 @@
 # risk_aggressive — echo set: deterministic test double, no credentials, no network.
 name: risk_aggressive
+description: 'aggressive posture in the risk discussion: plain turns, no completion gate.'
 inherits:
 - _base_risk_aggressive
 plugins: []

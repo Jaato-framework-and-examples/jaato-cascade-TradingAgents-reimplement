@@ -1,5 +1,6 @@
 # risk_aggressive — openrouter set: anthropic/claude-sonnet-4.5.
 name: risk_aggressive
+description: 'aggressive posture in the risk discussion: plain turns, no completion gate.'
 inherits:
 - _base_risk_aggressive
 - _openrouter_app
