@@ -692,9 +692,8 @@ What made this expensive to find: `jaato-scaffold validate` passed, the
 catalogue loaded (`Discovered 1 reference(s): stop-placement`), both test
 tiers were green, and the daemon logged nothing either way. Session logs hold
 RPC diagnostics, not prompt content, so their silence was no evidence at all —
-an inference this repository drew and had to retract. There is no
-introspection for "did this reference reach the model", and a probe token is
-the only instrument. Worth filing against jaato.
+an inference this repository drew and had to retract. A probe token was the instrument that found it; `context.tool_calls` is the
+standing one — see the next entry, which corrects this.
 
 Also seen while measuring, both the pipeline working rather than failing:
 
@@ -718,6 +717,36 @@ Also seen while measuring, both the pipeline working rather than failing:
   portfolio manager answered Hold every time. The analyst sets differed
   across those runs, so this is not a clean determinism measurement, but runs
   1 and 2 differed by one analyst and still swung Hold to Sell.
+
+### The duty is checkable, and sentiment leaves the default set (2026-10-03)
+
+Two corrections to the entry above, both from the user.
+
+**"There is no introspection for did this reference reach the model" was
+wrong.** `context.tool_calls` is the paired ledger of every call and its
+response, and kb-rip already audits it this way
+(`ledger_paths(tool_calls, "readFile")`). So the persona's duty to consult the
+catalogue is enforceable, not merely stated: `scripts/processors/rules_read.py`
+resolves every catalogue entry tagged `trader` to its path and refuses the
+completion when the session never opened it. It reads the requirement from the
+catalogue, so a new rule tagged `trader` becomes required with no change to
+the gate. This is better than the probe token that found the problem, because
+it runs in production on every proposal rather than once under a test.
+
+**Sentiment leaves the default analyst set.** All four of its sources are
+down. The alternative — reporting "no observable sentiment" as an ordinary
+finding — would make an outage and a genuinely quiet market produce the same
+payload, and that distinction is the one thing the data contract exists to
+keep. `DEFAULT_ANALYSTS` is now market, news, fundamentals; sentiment is still
+available by name for when a source returns.
+
+**The attribution rule goes on the debaters**, where the fabrication
+originates: `claims-must-match-the-source`, quoting the refusal that prompted
+it. It binds by instruction only. Debaters run as plain turns with no
+completion payload, so no gate can inspect them and `rules_read` does not
+apply; the research manager catches violations downstream, as it did. Making
+it enforceable would mean either a gate on the judge that reads the transcript
+or giving debaters a completion payload — both larger changes than the rule.
 
 ## Feature parity with the reference implementation
 

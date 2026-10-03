@@ -304,7 +304,13 @@ turn (used for `signal_completion` with a canned payload), `response` gives
 canned text, and `usage` is **mandatory** (a turn reporting no tokens emits
 no terminal event and `complete()` waits forever; `validate` flags it as
 `echo_reports_no_usage`). It cannot script a multi-turn tool loop; one call
-then text is all it does.
+then text is all it does.  **So a completion gate that requires the session
+to have CALLED something cannot be exercised by echo**: refusing the
+completion sends it back to do what it cannot do, the nudges exhaust and the
+stage dies with `NudgeExhausted` — `on_exhausted: allow` does not save it,
+because the failure is not exhausted refusals.  The echo set declines such a
+gate by name (`suppress_inherited_processors`), as `echo/trader.yaml` does
+for `rules_read`.
 
 ---
 

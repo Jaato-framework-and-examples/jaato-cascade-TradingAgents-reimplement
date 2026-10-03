@@ -3,6 +3,16 @@ name: trader
 description: turns the research plan into a trade proposal.
 inherits:
 - _base_trader
+# The echo double cannot satisfy `rules_read`: that gate requires the session
+# to have called readFile on its binding rules, and echo scripts exactly ONE
+# tool call, already spent on signal_completion (CLAUDE.md trap: "one call then
+# text is all it does").  Refusing its completion sends it back to do something
+# it cannot do, so the nudges exhaust and the stage fails with NudgeExhausted —
+# `on_exhausted: allow` does not help, because the failure is not exhausted
+# refusals.  Declining the gate here keeps the double honest about what it can
+# simulate; a gate that needs a real tool loop is not echo-testable.
+suppress_inherited_processors:
+- rules_read
 plugins: []
 model: echo
 provider: echo

@@ -3,7 +3,22 @@
 # Provider + model live in profiles/<set>/bull_researcher.yaml, selected by JAATO_PROFILE_SET.
 name: _base_bull_researcher
 description: 'bull side of the investment debate: plain turns, no completion gate.'
-plugins: []
+# The attribution rule reaches this stage as a reference. Selecting one only
+# authorises its PATH, so readFile is needed to open it and the persona must
+# say to look (measured 2026-10-03, docs/gaps.md). Unenforced here: a debater
+# runs as plain turns with no completion payload, so no gate inspects it — the
+# research manager catches violations downstream, which is how this rule was
+# found in the first place.
+plugins:
+- references(preload, tools:[listReferences, selectReferences])
+- file_edit(preload, tools:[readFile])
+plugin_configs:
+  references:
+    preselected: [claims-must-match-the-source]
+  permission:
+    policy:
+      whitelist:
+        tools: [readFile, listReferences, selectReferences]
 budget_control:
   # Debater: no tool calls observed; the costliest stage measured was a risk debater, $0.63 over 8 calls.
   # Sizing and mechanics: docs/gaps.md #15.

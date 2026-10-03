@@ -1,0 +1,15 @@
+{
+  "id": "claims-must-match-the-source",
+  "name": "What a debater may attribute to a report",
+  "description": "Binding rule for the bull and bear researchers: state as fact only what a report states, do not recharacterise its words, mark inference as your own, and name the report you draw on. Select before writing a debate turn.",
+  "mode": "selectable",
+  "tags": ["rule", "conformance", "debater", "attribution", "evidence"],
+  "type": "local",
+  "path": "../../../knowledge/rules/claims-must-match-the-source.md",
+  "links": [],
+  "origin": {
+    "kind": "human",
+    "created_by": "apanoia",
+    "note": "Hand-authored from an observed research-manager refusal, not distilled from a source. Unenforced at the debate stage: debaters run as plain turns with no completion payload, so no gate inspects them; the research manager catches violations downstream."
+  }
+}

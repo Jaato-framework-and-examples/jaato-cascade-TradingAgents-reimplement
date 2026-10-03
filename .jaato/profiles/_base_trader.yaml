@@ -53,6 +53,10 @@ spawn_payload_schema:
       - crypto
 completion_payload_schema: completion_schemas/trader_proposal.json
 completion_processors:
+- script: scripts/processors/rules_read.py
+  name: rules_read
+  max_refusals: 2
+  on_exhausted: allow
 - script: scripts/processors/price_fields.py
   name: price_fields
   max_refusals: 2
