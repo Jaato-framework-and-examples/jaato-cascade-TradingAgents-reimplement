@@ -658,6 +658,67 @@ executable check reproduces an answer key the check's author never saw**.
 - **Cost.** The end-to-end tier went 5:18 → 7:43 with the plugin on the
   trader; the unit tier gained 11 tests for the check.
 
+### A reference is made available, not delivered (2026-10-03, measured)
+
+Selecting a reference — by `selectReferences` or by `preselected` — only
+**authorises readonly access to its path**. Nothing is injected, under any
+mode. Measured with a probe token placed in the rule body and grepped out of
+the proposal:
+
+| mode | tools on the stage | persona told it to look | token echoed |
+|---|---|---|---|
+| `selectable` + `preselected` | listReferences, selectReferences | no | **no** |
+| `auto` + `preselected` | listReferences | no | **no** |
+| `selectable` + `preselected` | + `file_edit(readFile)` | **yes** | **yes** |
+
+So a stage needs three things, and two of them are easy to miss:
+
+1. the entry in the catalogue, `mode: selectable`;
+2. a **read tool**, or the authorised path cannot be opened — both sibling
+   projects carry `file_edit(preload, tools:[readFile])` beside `references`,
+   which looked incidental and is load-bearing;
+3. a **persona line telling the stage to consult the catalogue**, because a
+   reference cannot announce itself: it is unread until something reaches for
+   it.
+
+The third changes the design. "Move the knowledge out of the personas" was
+the wrong goal; the right one is to move the *content* out while leaving an
+explicit duty behind. The persona becomes the index and the catalogue holds
+what is indexed. The trader's now reads: "Before you state an entry, a stop
+or a size, call `listReferences` for the rules tagged `trader` ... a rule you
+did not read still applies to your proposal."
+
+What made this expensive to find: `jaato-scaffold validate` passed, the
+catalogue loaded (`Discovered 1 reference(s): stop-placement`), both test
+tiers were green, and the daemon logged nothing either way. Session logs hold
+RPC diagnostics, not prompt content, so their silence was no evidence at all —
+an inference this repository drew and had to retract. There is no
+introspection for "did this reference reach the model", and a probe token is
+the only instrument. Worth filing against jaato.
+
+Also seen while measuring, both the pipeline working rather than failing:
+
+- The **research manager refused a debate** because the bear researcher
+  asserted "three rejections" at a level the market report never counted and
+  recharacterised the report's "indecision" as "distribution". A judge
+  checking a debater against the source is the same conformance property this
+  KB work is meant to systematise, already happening between stages. It is
+  the second rule worth writing.
+- The **sentiment stage now fails every full run**: StockTwits 403 since
+  2026-09-23, both Reddit subs failing, news feeds empty for the window. The
+  persona tells the analyst to put a total failure in `errors[]` and the
+  driver turns that into `StageFailed`, so the run dies. Open decision:
+  report "no observable sentiment" as a finding (and lose the distinction
+  between an outage and a quiet market, which is the one thing the data
+  contract exists to preserve), or drop sentiment from the default set until
+  the sources are replaced.
+- **The trader is the volatile stage.** Four runs of the identical cell
+  (NVDA 2026-09-29) produced Hold-with-a-stop-and-no-entry, Sell with no
+  levels, Buy at 227.21 stop 215.17, and Hold with no levels — while the
+  portfolio manager answered Hold every time. The analyst sets differed
+  across those runs, so this is not a clean determinism measurement, but runs
+  1 and 2 differed by one analyst and still swung Hold to Sell.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

@@ -3,7 +3,14 @@
   "name": "Where a stop goes, and when there is none",
   "description": "Binding rule for the trader: a stop exists only alongside an entry, sits on the side of entry that invalidates the thesis, and stands at least one ATR(14) away, taken from the verified snapshot. Select when proposing or reviewing an entry, a stop or a sizing note.",
   "mode": "selectable",
-  "tags": ["rule", "conformance", "trader", "stop-loss", "risk", "position"],
+  "tags": [
+    "rule",
+    "conformance",
+    "trader",
+    "stop-loss",
+    "risk",
+    "position"
+  ],
   "type": "local",
   "path": "../../../knowledge/rules/stop-placement.md",
   "links": [],

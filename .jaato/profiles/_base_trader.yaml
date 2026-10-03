@@ -4,15 +4,27 @@
 name: _base_trader
 description: turns the research plan into a trade proposal.
 # The binding rules this stage must satisfy reach it as references, not as
-# persona prose: they are versioned, citable, and each one has a conformance
-# check under knowledge/checks/.  `preselected` because they are obligations,
-# not a library — a rule the model has to remember to look up is a guardrail
-# that silently lapses.  A growing catalogue goes in `selectable` instead.
+# persona prose: they are versioned, citable, and each has a conformance
+# check under knowledge/checks/.
+#
+# MEASURED 2026-10-03: selecting a reference (and `preselected`) only makes it
+# AVAILABLE — it authorises readonly access to the reference's path.  Nothing
+# is injected, under any mode: a probe token placed in the rule body was never
+# echoed by the trader under `selectable` or under `auto`.  So the stage needs
+# readFile to open what it selected, AND the persona must tell it to look:
+# an unread rule binds nothing.  The persona is the index, the catalogue is
+# the content.
 plugins:
 - references(preload, tools:[listReferences, selectReferences])
+- file_edit(preload, tools:[readFile])
 plugin_configs:
   references:
     preselected: [stop-placement]
+  permission:
+    # A headless run must never wait on an approval prompt (CLAUDE.md, host tools).
+    policy:
+      whitelist:
+        tools: [readFile, listReferences, selectReferences]
 budget_control:
   # Judge: 1 signal_completion observed, but field-by-field completion can take ~15 calls; 17-81 s.
   # Sizing and mechanics: docs/gaps.md #15.
