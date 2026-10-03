@@ -893,6 +893,56 @@ endpoint is the likely fault rather than the news supply. With sentiment
 already out, two of four analysts are now unavailable and the pipeline is
 deciding on price and fundamentals alone — which the personas do not say.
 
+### News moves to Finnhub (2026-10-03), and the pilot had none
+
+`yfinance`'s news endpoint began answering **404** — the library negotiates its
+cookie and crumb, then the news POST 404s, and it returns `[]` rather than
+raising. We are already on the latest release (1.7.0), so there was no upgrade
+to take. `history()` is unaffected, which is why prices kept working while news
+went silent. (A `429` seen while debugging came from a direct probe of a
+different Yahoo endpoint, which rate-limits this IP; it was not the cause.)
+
+**The pilot ran with no company news, and the reports read as though it had
+some.** `yfinance.news` only ever served RECENT articles; `_format_news` then
+filtered to the cell's window. For a cell dated April–August, every recent
+article falls outside the window and is dropped, so all sixty pilot cells were
+told there were no articles. Finnhub, asked for those same windows, serves
+~250 each. The pilot's workspaces are gone so this cannot be re-verified
+directly, but the mechanism is not in doubt.
+
+`company-news` takes `from`/`to`, so a historical window is **served, not
+filtered** — the point-in-time property backtests need and never had. The token
+is `pass://jaato/finnhub/api-key`, read by the driver from the pass store:
+one source, not a resolution chain, because a credential that can come from
+several places fails in several ways and the one that matters is silent.
+(`FRED_API_KEY` is the cautionary case: it reads from the environment, has
+never been set, and macro data has quietly been unavailable throughout.)
+
+**Three kinds of nothing, not two.** `_format_news` had ONE message for a
+source that answered with nothing and a window that was genuinely quiet,
+despite CLAUDE.md §7 stating they must differ. Now `DATA_UNAVAILABLE` when we
+were not served and `NO_DATA` when the source served items and none fell in the
+window.
+
+That split then exposed a third case while wiring `global_news`. Finnhub's
+general feed takes **no date range** and carries only the last few days, so for
+a backtest window "served 100, none in your window" would read as *that window
+was quiet* — a claim about a period nobody observed. `global_news` now compares
+the span the feed actually carries against the window asked for and reports a
+window outside it as unavailable:
+
+    DATA_UNAVAILABLE: the market news feed carries 2026-09-30..2026-10-03 only
+    and takes no date range, so it cannot speak to 2026-03-27..2026-04-03. This
+    is an absence of evidence about that window, NOT evidence the market was quiet.
+
+Two things to know before leaning on Finnhub: counts come back at 246–250 per
+request, so there is likely a **250-item cap**; and `company-news` returns
+pieces merely TAGGED to the symbol — the top April NVDA article was about
+cruise lines — so this is more raw material than yfinance gave, wanting
+relevance filtering rather than less. The per-category vendor chain of
+`docs/gaps.md` P1 is still not built; this is one vendor replacing another, and
+the next 404 will go just as quiet.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

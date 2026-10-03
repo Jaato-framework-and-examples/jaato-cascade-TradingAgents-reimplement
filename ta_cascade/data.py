@@ -17,8 +17,10 @@ Everything returns ``str`` — that is what a host tool hands back.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import json
 import os
+import subprocess
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 UNAVAILABLE = "DATA_UNAVAILABLE"
@@ -363,40 +365,131 @@ def _news_items(raw: List[dict]) -> List[Tuple[dt.datetime, str, str, str]]:
     return sorted(items, reverse=True)
 
 
-def _format_news(items, start: dt.date, end: dt.date, limit: int) -> str:
+def _format_news(items, start: dt.date, end: dt.date, limit: int, *, served: int) -> str:
+    """Format the window's articles, saying which KIND of nothing we have.
+
+    ``served`` is how many articles the source handed us before the date
+    filter.  A source that answered with nothing and a window that was quiet
+    are different facts and get different sentences (CLAUDE.md §7): the first
+    is an absence of evidence, the second is evidence of absence, and a reader
+    that cannot tell them apart will reason about silence that was never
+    observed.  They were one message until 2026-10-03, when yfinance's news
+    endpoint began answering 404 and the pipeline was told a month of NVDA
+    coverage had simply been quiet.
+    """
     kept = [i for i in items if start <= i[0].date() <= end][:limit]
     if not kept:
-        return (f"{UNAVAILABLE}: no articles dated between {start} and {end} were "
-                f"returned. Do not invent headlines.")
+        if not served:
+            return (f"{UNAVAILABLE}: the news source returned nothing at all for this symbol — "
+                    f"not an empty window but no answer. Reason without news; do NOT conclude "
+                    f"that nothing was published.")
+        return (f"NO_DATA: the source served {served} article(s) for this symbol, none dated "
+                f"between {start} and {end}. That window was quiet. Do not invent headlines.")
     lines = [f"- [{p.date()}] {t} ({s})" + (f"\n  {summ[:400]}" if summ else "")
              for p, t, s, summ in kept]
     return f"# {len(kept)} articles, {start} to {end}\n" + "\n".join(lines)
 
 
+
+
+# ------------------------------------------------------------------ news (Finnhub)
+
+FINNHUB_SECRET = "jaato/finnhub/api-key"
+"""Where this project keeps the Finnhub token.
+
+One source, not a resolution chain: a credential that can come from several
+places fails in several ways, and the one that matters here is silent. Absent,
+every news call says so by name.
+
+yfinance served this until 2026-10-03, when its news endpoint began answering
+404 — and it only ever returned RECENT articles, so a backtest cell's window
+filter dropped all of them. The pilot's sixty cells (April–August) therefore
+ran with no company news at all while reporting around its absence. Finnhub
+takes `from`/`to` natively, so a historical window is served, not filtered.
+"""
+
+FINNHUB_TIMEOUT_S = 20.0
+
+
+@functools.lru_cache(maxsize=1)
+def _finnhub_key():
+    """The token, or ``None``. Read once per process."""
+    try:
+        out = subprocess.run(["pass", "show", FINNHUB_SECRET],
+                             capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0 or not out.stdout.strip():
+        return None
+    return out.stdout.splitlines()[0].strip() or None
+
+
+def _finnhub_items(raw):
+    """Finnhub articles -> the shape ``_format_news`` takes."""
+    items = []
+    for a in raw or []:
+        when = a.get("datetime")
+        if not isinstance(when, (int, float)):
+            continue
+        items.append((dt.datetime.fromtimestamp(when, dt.timezone.utc),
+                      a.get("headline") or "", a.get("source") or "",
+                      a.get("summary") or ""))
+    return sorted(items, reverse=True)
+
+
+def _finnhub(path: str, **params):
+    key = _finnhub_key()
+    if not key:
+        return None
+    params["token"] = key
+    return json.loads(_get(f"https://finnhub.io/api/v1/{path}",
+                           timeout=FINNHUB_TIMEOUT_S, accept="application/json", params=params))
+
 def news(symbol: str, start_date: str, end_date: str, as_of: str, limit: int = 20) -> str:
+    """Articles about ``symbol`` inside the window, from Finnhub's dated feed."""
     try:
         start, end = _date(start_date), min(_date(end_date), _date(as_of))
-        return _format_news(_news_items(_ticker(symbol).news), start, end, limit)
+        raw = _finnhub("company-news", symbol=symbol.upper(),
+                       **{"from": start.isoformat(), "to": end.isoformat()})
+        if raw is None:
+            return (f"{UNAVAILABLE}: no Finnhub token at pass://{FINNHUB_SECRET}, so company "
+                    f"news for {symbol} could not be fetched. Reason without news; do NOT "
+                    f"conclude that nothing was published.")
+        return _format_news(_finnhub_items(raw), start, end, limit, served=len(raw))
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"news for {symbol}", exc)
 
 
 def global_news(as_of: str, lookback_days: int = 7, limit: int = 10) -> str:
-    """Market-wide headlines: the news feeds of broad index and rates proxies."""
+    """Market-wide headlines from Finnhub's general feed.
+
+    That feed is RECENT-ONLY: it takes no date range and carries the last few
+    days.  So it can answer a live run and cannot answer a backtest, and the
+    difference is not cosmetic — "the feed served 100 articles, none dated in
+    your window" would read as *that window was quiet*, which for a window the
+    feed never covered is a claim about a period nobody observed.  The span the
+    feed actually carries is compared with the window asked for, and a window
+    outside it is reported unavailable, not quiet.
+    """
     try:
         end = _date(as_of)
         start = end - dt.timedelta(days=int(lookback_days))
-        items = []
-        for proxy in ("SPY", "QQQ", "TLT", "GLD", "USO"):
-            try:
-                items.extend(_news_items(_ticker(proxy).news))
-            except Exception:  # noqa: BLE001 — one proxy failing is not the answer
-                continue
-        seen, uniq = set(), []
-        for it in sorted(items, reverse=True):
-            if it[1] not in seen:
-                seen.add(it[1]); uniq.append(it)
-        return _format_news(uniq, start, end, limit)
+        raw = _finnhub("news", category="general")
+        if raw is None:
+            return (f"{UNAVAILABLE}: no Finnhub token at pass://{FINNHUB_SECRET}, so market "
+                    f"news could not be fetched. Reason without it; do NOT conclude the market "
+                    f"was quiet.")
+        items = _finnhub_items(raw)
+        if not items:
+            return (f"{UNAVAILABLE}: the market news feed returned nothing at all. Reason "
+                    f"without it; do NOT conclude the market was quiet.")
+        covered_from, covered_to = items[-1][0].date(), items[0][0].date()
+        if end < covered_from or start > covered_to:
+            return (f"{UNAVAILABLE}: the market news feed carries {covered_from}..{covered_to} "
+                    f"only and takes no date range, so it cannot speak to {start}..{end}. This "
+                    f"is an absence of evidence about that window, NOT evidence the market was "
+                    f"quiet.")
+        return _format_news(items, start, end, limit, served=len(items))
     except Exception as exc:  # noqa: BLE001
         return _unavailable("global news", exc)
 

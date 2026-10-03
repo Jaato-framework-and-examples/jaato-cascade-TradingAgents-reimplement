@@ -409,6 +409,21 @@ for `rules_read`.
   than `RunConfig.max_stale_days` (7) calendar days before the date asked.
 - yfinance `info` is not point-in-time; `fundamentals()` says so in its
   text. Statements are filtered by period-end date, with a filing-lag note.
+- **News comes from Finnhub** (`pass://jaato/finnhub/api-key`, read by the
+  DRIVER from the pass store, not an env var). `company-news` takes `from`/`to`
+  natively, so a historical window is SERVED rather than filtered out of a
+  recent feed — which is what yfinance did until its news endpoint began
+  answering 404 on 2026-10-03, and why the pilot's sixty April–August cells ran
+  with no company news at all. `global_news` uses Finnhub's general feed, which
+  takes NO date range and carries only the last few days: it compares the span
+  it actually carries with the window asked for and reports a window outside it
+  as unavailable, never as quiet.
+- **Three kinds of nothing, three sentences.** `DATA_UNAVAILABLE` = we were not
+  served (a 404, a missing credential, a feed that cannot cover the window);
+  `NO_DATA` = the source served items and none fell in the window, so the
+  window really was quiet; articles = what we saw. Collapsing the first two
+  lets a model reason about a silence nobody observed, which is how a dead
+  endpoint read as "a quiet month for NVDA".
 - Social: `stocktwits_messages` tallies user-applied Bullish/Bearish labels;
   `reddit_posts` reads the `wallstreetbets`, `stocks`, `investing` search
   feeds, strips Reddit's HTML body markers, and reports per-subreddit
