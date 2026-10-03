@@ -32,12 +32,25 @@ class RunState:
     asset_type: str
     instrument_context: str
     past_context: str = ""
+    evidence: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     reports: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     investment_debate: List[DebateTurn] = field(default_factory=list)
     research_plan: Optional[Dict[str, Any]] = None
     trader_proposal: Optional[Dict[str, Any]] = None
     risk_debate: List[DebateTurn] = field(default_factory=list)
     portfolio_decision: Optional[Dict[str, Any]] = None
+
+    # ---- evidence: what the data layer actually handed the analysts ----
+
+    def record_snapshot(self, facts: Dict[str, Any]) -> None:
+        """Keep a verified snapshot as data, in the order it was served.
+
+        The reports hold the model's retelling of these numbers; this holds
+        the numbers.  A conformance check reads from here, so it attests what
+        the analyst was given rather than what it chose to quote, and an audit
+        stays possible after the run's workspace is gone.
+        """
+        self.evidence.setdefault("snapshots", []).append(facts)
 
     # ---- composition helpers the pipeline uses to build prompts ----
 

@@ -173,10 +173,21 @@ backtests/<name>/          generated matrices: fixture/ (empty) + tasks/<TICKER>
                                       NB: `.jaato/scripts/` is code the DAEMON runs inside the
                                       runner (bounded, `ta_cascade` must be importable there).
                                       It is not the repo's own `scripts/` at the root, below.
+  references/<bundle>/*.json           the references CATALOG: one entry per rule, pointing at
+                                      its body under knowledge/. Wired on _base_trader as
+                                      `references(preload)` + `preselected:` — obligations, not
+                                      a library to search.
   logs/  sessions/  .artifact_tracker.json
                                       the FRAMEWORK's runtime state, gitignored.
                                       `.jaato/` is the daemon's config_root and holds
                                       framework assets only — never a driver product.
+
+knowledge/                 the KB's authored half, committed
+  rules/<id>.md            a binding rule's text: Rule / Rationale / Scope / Examples / Sources
+  checks/check-<id>/       its conformance check: check.py, stdlib only, read-only, one JSON
+                           object on stdout. Reads ONLY the run's captured evidence, never the
+                           network — `cannot_verify` when a cell predates the capture.
+                           A check attests conformance to a rule, never the rule's validity.
 
 .ta_cascade/               the DRIVER's runtime state, gitignored
   journal/                 per-run resume journals (see RunConfig.journal_dir)
@@ -293,7 +304,13 @@ turn (used for `signal_completion` with a canned payload), `response` gives
 canned text, and `usage` is **mandatory** (a turn reporting no tokens emits
 no terminal event and `complete()` waits forever; `validate` flags it as
 `echo_reports_no_usage`). It cannot script a multi-turn tool loop; one call
-then text is all it does.
+then text is all it does.  **So a completion gate that requires the session
+to have CALLED something cannot be exercised by echo**: refusing the
+completion sends it back to do what it cannot do, the nudges exhaust and the
+stage dies with `NudgeExhausted` — `on_exhausted: allow` does not save it,
+because the failure is not exhausted refusals.  The echo set declines such a
+gate by name (`suppress_inherited_processors`), as `echo/trader.yaml` does
+for `rules_read`.
 
 ---
 

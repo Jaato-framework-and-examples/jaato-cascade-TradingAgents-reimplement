@@ -17,6 +17,18 @@ from typing import List, Optional
 ANALYST_KEYS = ("market", "sentiment", "news", "fundamentals")
 """The four analysts, in the order they run when all are selected."""
 
+DEFAULT_ANALYSTS = [k for k in ANALYST_KEYS if k != "sentiment"]
+"""The analysts a run uses unless told otherwise.
+
+``sentiment`` is out since 2026-10-03: StockTwits answers 403, both Reddit
+search feeds fail and the news feeds returned nothing for the window, so the
+stage reports every source unavailable in ``errors[]`` and the driver stops
+the run.  Reporting "no observable sentiment" as a finding instead would make
+an outage and a genuinely quiet market produce the same payload, and that
+distinction is the one thing the data contract exists to keep.  Ask for it by
+name (``--analysts market,sentiment``) when a source is working again.
+"""
+
 RATINGS = ("Buy", "Overweight", "Hold", "Underweight", "Sell")
 """The five-tier rating vocabulary shared by the research manager and the
 portfolio manager (mirrored in the completion schemas)."""
@@ -73,7 +85,7 @@ class RunConfig:
     ticker: str
     trade_date: str
     asset_type: str = "stock"
-    analysts: List[str] = field(default_factory=lambda: list(ANALYST_KEYS))
+    analysts: List[str] = field(default_factory=lambda: list(DEFAULT_ANALYSTS))
     max_debate_rounds: int = 1
     max_risk_rounds: int = 1
     workspace: Path = field(default_factory=lambda: Path.cwd())

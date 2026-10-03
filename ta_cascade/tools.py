@@ -10,12 +10,15 @@ sentence rather than a stack trace.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from . import data
 from .config import RunConfig
 
 Spec = Dict[str, Any]
+
+Recorder = Callable[[Dict[str, Any]], None]
+"""Given the verified snapshot's facts, keeps them in the run state."""
 
 
 TOOL_BUDGET_S = 45.0
@@ -47,7 +50,7 @@ _LOOKBACK = {"type": "integer", "minimum": 5, "maximum": 120,
              "description": "calendar days up to the as-of date (default 30)"}
 
 
-def market_tools(cfg: RunConfig) -> List[Spec]:
+def market_tools(cfg: RunConfig, record: Optional[Recorder] = None) -> List[Spec]:
     as_of = cfg.trade_date
     stale = cfg.max_stale_days
     default_start = (dt.date.fromisoformat(as_of) - dt.timedelta(days=120)).isoformat()
@@ -80,7 +83,7 @@ def market_tools(cfg: RunConfig) -> List[Spec]:
             {"symbol": {"type": "string"}, "lookback_days": _LOOKBACK},
             ["symbol"],
             lambda a: data.snapshot(a["symbol"], as_of, a.get("lookback_days", 30),
-                                    max_stale_days=stale),
+                                    max_stale_days=stale, record=record),
         ),
     ]
 
@@ -160,11 +163,16 @@ def fundamentals_tools(cfg: RunConfig) -> List[Spec]:
     ]
 
 
-def host_tools(cfg: RunConfig) -> Dict[str, List[Spec]]:
+def host_tools(cfg: RunConfig, record: Optional[Recorder] = None) -> Dict[str, List[Spec]]:
     """Tool lists keyed by analyst key. The sentiment analyst has none: its
-    material is pre-fetched into its persona by a prefetch script."""
+    material is pre-fetched into its persona by a prefetch script.
+
+    ``record`` is handed the verified snapshot's facts each time the market
+    analyst asks for them, so the run keeps the numbers themselves and not
+    only the report's retelling of them.
+    """
     return {
-        "market": market_tools(cfg),
+        "market": market_tools(cfg, record),
         "news": news_tools(cfg),
         "fundamentals": fundamentals_tools(cfg),
         "sentiment": [],

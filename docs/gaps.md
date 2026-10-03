@@ -603,6 +603,151 @@ restart was mandatory rather than hygienic.
   figure, so the number in CLAUDE.md was simply stale rather than a
   regression introduced by either upgrade. Corrected there.
 
+## The first references (2026-10-03): a rule the trader is held to
+
+The personas carry no investment knowledge. All thirteen total **1,781
+words**, and what is in them is role, protocol and guardrails — which tool to
+call in what order, what belongs in `errors` rather than `warnings`, "the
+snapshot's numbers are the only price levels you may state as facts". Nothing
+in them says anything about markets. So the knowledge the pipeline runs on is
+not hardcoded in prose; it is latent in the model's pretraining, which is
+uninspectable, unversioned, untestable and free to move on a provider
+upgrade. That is the argument for a knowledge base: not refactoring knowledge
+out of prose, but writing down knowledge that exists nowhere.
+
+The shape is taken from the sibling `kb-for-coding-patterns-wiki` ("kb-rip"),
+whose chain is page → atoms → references → capability → check module, and
+whose transferable idea is that **a claim cannot enter the catalogue until an
+executable check reproduces an answer key the check's author never saw**.
+(ADR → ERI → Capability → Feature belongs to a different project,
+`enablement-2.0-kb`, whose checks are declarative constraint YAML.)
+
+- **Conformance is not validity, and only the first is a deterministic
+  check.** "Did this report apply the rule correctly to the snapshot it was
+  given?" is decidable and blind-testable. "Does the rule predict anything?"
+  can only be answered by history, which answers many questions at once and
+  promotes whichever got lucky; that needs pre-registration and an
+  out-of-sample holdout, and it is not a check. The first reference is a
+  conformance rule, and its check says so.
+- **The blind protocol does not yet apply here.** The same hand wrote the
+  rule and its check, so the check attests conformance and nothing more. The
+  caveat is recorded in the catalogue entry's `origin`, so it travels with
+  the reference instead of living in a conversation.
+- **`state.json` kept the model's retelling of the numbers, not the
+  numbers.** ATR appeared only inside prose, so no check could read what the
+  analyst was actually given. `data.snapshot` now takes a `record` callback
+  and the driver passes `RunState.record_snapshot`, so every verified
+  snapshot survives in `state.evidence.snapshots` as data. The check reads
+  only from there and reports `cannot_verify` when it is absent, rather than
+  recomputing from the network: a check that reaches for live data answers
+  differently on different days and stops being a check.
+- **The pilot cannot be re-audited, and that is the lesson that prompted
+  this.** `/tmp/pilot-ws` was cleared; `backtests/pilot/jev.jsonl` kept only
+  derived fields. Sixty arms' reports and proposals are gone, so no rule
+  invented afterwards can ever be measured against them.
+- **The rule binds on real output.** Audited over the four surviving live
+  cells, two conform and two do not: `NVDA 2026-09-22` placed its stop 5.89
+  from entry against an ATR(14) of 6.25 — inside the instrument's own daily
+  range, and that is the call that scored FAIL — and `NVDA 2026-09-29`
+  carried a stop of 217.00 with no entry and a Hold rating.
+- **Wiring.** `references(preload, tools:[listReferences, selectReferences])`
+  on `_base_trader` with `preselected: [stop-placement]`. Preselected rather
+  than selectable because these are obligations: a rule the model must
+  remember to look up is a guardrail that silently lapses. A catalogue large
+  enough to search belongs in `selectable`; this one is not.
+- **Cost.** The end-to-end tier went 5:18 → 7:43 with the plugin on the
+  trader; the unit tier gained 11 tests for the check.
+
+### A reference is made available, not delivered (2026-10-03, measured)
+
+Selecting a reference — by `selectReferences` or by `preselected` — only
+**authorises readonly access to its path**. Nothing is injected, under any
+mode. Measured with a probe token placed in the rule body and grepped out of
+the proposal:
+
+| mode | tools on the stage | persona told it to look | token echoed |
+|---|---|---|---|
+| `selectable` + `preselected` | listReferences, selectReferences | no | **no** |
+| `auto` + `preselected` | listReferences | no | **no** |
+| `selectable` + `preselected` | + `file_edit(readFile)` | **yes** | **yes** |
+
+So a stage needs three things, and two of them are easy to miss:
+
+1. the entry in the catalogue, `mode: selectable`;
+2. a **read tool**, or the authorised path cannot be opened — both sibling
+   projects carry `file_edit(preload, tools:[readFile])` beside `references`,
+   which looked incidental and is load-bearing;
+3. a **persona line telling the stage to consult the catalogue**, because a
+   reference cannot announce itself: it is unread until something reaches for
+   it.
+
+The third changes the design. "Move the knowledge out of the personas" was
+the wrong goal; the right one is to move the *content* out while leaving an
+explicit duty behind. The persona becomes the index and the catalogue holds
+what is indexed. The trader's now reads: "Before you state an entry, a stop
+or a size, call `listReferences` for the rules tagged `trader` ... a rule you
+did not read still applies to your proposal."
+
+What made this expensive to find: `jaato-scaffold validate` passed, the
+catalogue loaded (`Discovered 1 reference(s): stop-placement`), both test
+tiers were green, and the daemon logged nothing either way. Session logs hold
+RPC diagnostics, not prompt content, so their silence was no evidence at all —
+an inference this repository drew and had to retract. A probe token was the instrument that found it; `context.tool_calls` is the
+standing one — see the next entry, which corrects this.
+
+Also seen while measuring, both the pipeline working rather than failing:
+
+- The **research manager refused a debate** because the bear researcher
+  asserted "three rejections" at a level the market report never counted and
+  recharacterised the report's "indecision" as "distribution". A judge
+  checking a debater against the source is the same conformance property this
+  KB work is meant to systematise, already happening between stages. It is
+  the second rule worth writing.
+- The **sentiment stage now fails every full run**: StockTwits 403 since
+  2026-09-23, both Reddit subs failing, news feeds empty for the window. The
+  persona tells the analyst to put a total failure in `errors[]` and the
+  driver turns that into `StageFailed`, so the run dies. Open decision:
+  report "no observable sentiment" as a finding (and lose the distinction
+  between an outage and a quiet market, which is the one thing the data
+  contract exists to preserve), or drop sentiment from the default set until
+  the sources are replaced.
+- **The trader is the volatile stage.** Four runs of the identical cell
+  (NVDA 2026-09-29) produced Hold-with-a-stop-and-no-entry, Sell with no
+  levels, Buy at 227.21 stop 215.17, and Hold with no levels — while the
+  portfolio manager answered Hold every time. The analyst sets differed
+  across those runs, so this is not a clean determinism measurement, but runs
+  1 and 2 differed by one analyst and still swung Hold to Sell.
+
+### The duty is checkable, and sentiment leaves the default set (2026-10-03)
+
+Two corrections to the entry above, both from the user.
+
+**"There is no introspection for did this reference reach the model" was
+wrong.** `context.tool_calls` is the paired ledger of every call and its
+response, and kb-rip already audits it this way
+(`ledger_paths(tool_calls, "readFile")`). So the persona's duty to consult the
+catalogue is enforceable, not merely stated: `scripts/processors/rules_read.py`
+resolves every catalogue entry tagged `trader` to its path and refuses the
+completion when the session never opened it. It reads the requirement from the
+catalogue, so a new rule tagged `trader` becomes required with no change to
+the gate. This is better than the probe token that found the problem, because
+it runs in production on every proposal rather than once under a test.
+
+**Sentiment leaves the default analyst set.** All four of its sources are
+down. The alternative — reporting "no observable sentiment" as an ordinary
+finding — would make an outage and a genuinely quiet market produce the same
+payload, and that distinction is the one thing the data contract exists to
+keep. `DEFAULT_ANALYSTS` is now market, news, fundamentals; sentiment is still
+available by name for when a source returns.
+
+**The attribution rule goes on the debaters**, where the fabrication
+originates: `claims-must-match-the-source`, quoting the refusal that prompted
+it. It binds by instruction only. Debaters run as plain turns with no
+completion payload, so no gate can inspect them and `rules_read` does not
+apply; the research manager catches violations downstream, as it did. Making
+it enforceable would mean either a gate on the judge that reads the transcript
+or giving debaters a completion payload — both larger changes than the rule.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
