@@ -446,17 +446,29 @@ takes `from`/`to` natively, so a historical window is served, not filtered.
 FINNHUB_TIMEOUT_S = 20.0
 
 
-@functools.lru_cache(maxsize=1)
-def _finnhub_key():
-    """The token, or ``None``. Read once per process."""
+@functools.lru_cache(maxsize=8)
+def _pass_secret(entry: str):
+    """The first line of a pass entry, or ``None``. Read once per process.
+
+    One source per credential, never a resolution chain: a key that can come
+    from several places fails in several ways, and the failure that matters is
+    the silent one.  ``FRED_API_KEY`` is the cautionary case — ``macro()``
+    read it from the environment, nothing ever set it, and macro data was
+    quietly unavailable for the life of the project without one message
+    saying so out loud.
+    """
     try:
-        out = subprocess.run(["pass", "show", FINNHUB_SECRET],
+        out = subprocess.run(["pass", "show", entry],
                              capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return None
     if out.returncode != 0 or not out.stdout.strip():
         return None
     return out.stdout.splitlines()[0].strip() or None
+
+
+def _finnhub_key():
+    return _pass_secret(FINNHUB_SECRET)
 
 
 def _finnhub_items(raw):
@@ -531,13 +543,24 @@ def global_news(as_of: str, lookback_days: int = 7, limit: int = 10) -> str:
 
 # ---------------------------------------------------------------- macro (FRED)
 
+FRED_SECRET = "jaato/fred/api-key"
+"""Where this project keeps the FRED token."""
+
+
 def macro(series: str, as_of: str, lookback_days: int = 180) -> str:
-    """A FRED series as observed on ``as_of`` (vintage-pinned), needs ``FRED_API_KEY``."""
-    key = os.environ.get("FRED_API_KEY")
+    """A FRED series as it was KNOWN on ``as_of``, not as it reads today.
+
+    ``realtime_start``/``realtime_end`` pin the vintage, so a revised figure
+    does not leak backwards into a historical cell: a backtest sees the number
+    the market saw.  That makes this the one macro source a prediction test can
+    use, where yfinance's undated ``info`` block could not be (see
+    :func:`fundamentals`).
+    """
+    key = _pass_secret(FRED_SECRET)
     sid = MACRO_SERIES.get(series.strip().lower(), series.strip().upper())
     if not key:
-        return (f"{UNAVAILABLE}: FRED_API_KEY is not set, so {sid} cannot be fetched. "
-                f"Say macro data was unavailable.")
+        return (f"{UNAVAILABLE}: no FRED token at pass://{FRED_SECRET}, so {sid} cannot be "
+                f"fetched. Say macro data was unavailable; do not estimate it.")
     try:
         import requests
         end = _date(as_of)

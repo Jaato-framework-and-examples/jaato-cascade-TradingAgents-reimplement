@@ -102,9 +102,18 @@ def test_an_empty_window_says_so(monkeypatch):
 
 
 def test_macro_without_key_is_a_sentence(monkeypatch):
-    monkeypatch.delenv("FRED_API_KEY", raising=False)
-    text = data.macro("cpi", "2026-01-15")
-    assert text.startswith(data.UNAVAILABLE) and "CPIAUCSL" in text
+    """No token is a sentence the model can act on, not an exception.
+
+    The token moved from FRED_API_KEY to the pass store on 2026-10-03: the env
+    var was never set by anything, so macro data was quietly unavailable for
+    the life of the project.
+    """
+    monkeypatch.setattr(data, "_pass_secret", lambda entry: None)
+    text = data.macro("vix", "2026-09-29")
+    assert text.startswith(data.UNAVAILABLE)
+    assert data.FRED_SECRET in text          # names what is missing, by path
+    assert "do not estimate" in text
+
 
 
 def test_news_window_filter():
