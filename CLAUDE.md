@@ -53,20 +53,35 @@ Rough map of what was learned about the reference (v0.4.2) is in
 
 ### Dependencies
 
-- `jaato-sdk` (the client library) and, wherever the daemon runs,
-  `jaato-server`. During development both were **editable installs from a
-  sibling checkout of the jaato repository** (`pip install -e jaato-sdk/.
-  -e jaato-server/.`); there is no published wheel yet. `pyproject.toml`
-  declares only `jaato-sdk`.
-- `pandas`, `yfinance`, `requests` for the data layer; `pytest` for tests.
-- The `jaato-scaffold` and `jaato-doctor` console scripts come with those
-  packages. **Run them from the same Python environment as the daemon.**
+**This repository is a jaato CLIENT. It holds its own venv with the SDK and
+its own dependencies, and it does NOT hold `jaato-server`.**
+
+The daemon is a shared service living in its own environment; a client reaches
+it over IPC. Installing the server into a client venv couples the client's
+build to the daemon's and makes them move together, which is the opposite of
+what a shared daemon is for.
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -e /path/to/jaato/jaato-sdk -e /path/to/jaato/jaato-server
-.venv/bin/pip install -e ".[dev]"
+.venv/bin/pip install jaato-sdk          # the client library (PyPI; TestPyPI for an rc)
+.venv/bin/pip install -e ".[dev,board]"  # this driver and its own dependencies
 ```
+
+- `jaato-scaffold` and `jaato-doctor` come with **jaato-sdk**, so a client venv
+  has both. `validate` needs no local server: it DELEGATES, and says so —
+  `[validated by the daemon at /tmp/jaato.sock (jaato-server 1.3.0) — not this venv]`.
+- `pandas`, `yfinance`, `requests`, `matplotlib` for the data layer and chart;
+  `pytest` and `PyYAML` for tests; `starlette`/`uvicorn` for `sweep-board`
+  (`[board]`). PyYAML used to arrive transitively from jaato-server and was
+  never declared — two tests skipped silently the first time the venv was
+  built correctly.
+- **`jaato-doctor` reports one FAIL in a correct client venv**:
+  `import jaato_server … required for autostart`. It does not apply here —
+  `RunConfig.auto_start=False` against a shared daemon never starts one — and
+  the `jaato_server checkout` skew check degrades to a WARN for the same
+  reason. Verified 2026-10-06: 137 unit tests and the full end-to-end tier pass
+  from a venv holding only `jaato-sdk` 0.29.0 from PyPI, against a daemon
+  running from an entirely different environment.
 
 ### Commands
 
@@ -96,7 +111,7 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
-.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~5 min, starts a private daemon
+.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~5 min, needs a REACHABLE daemon
 
 # backtests: the driver as a jaato-eval ARM (harness.kind: driver, jaato#1110)
 python -m ta_cascade backtest-tasks pilot --tickers NVDA,AMD --from 2026-04-03 --to 2026-08-28 --every 7

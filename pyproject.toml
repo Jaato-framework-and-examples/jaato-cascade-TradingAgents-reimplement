@@ -18,7 +18,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "PyYAML>=6.0"]  # PyYAML: the task-manifest tests. It used to arrive
+                                      # transitively from jaato-server; a client venv that
+                                      # holds only the SDK does not pull it, and two tests
+                                      # skipped silently until one did.
 # `sweep-board` only. Kept out of the base install: a dependency added for two
 # routes is a dependency added for ever, and the driver must stay runnable as a
 # jaato-eval arm without a web stack.
