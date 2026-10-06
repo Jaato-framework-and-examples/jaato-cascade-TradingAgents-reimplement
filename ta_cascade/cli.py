@@ -59,7 +59,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--repeats", type=int, default=1, help="arms per cell; 5 for a determinism study")
     b.add_argument("--analysts", default="market",
                    help="comma-separated subset of " + ",".join(ANALYST_KEYS)
-                        + " (default market: the news and social sources serve recent items only)")
+                        + " (default market). news IS historical since 2026-10-03: Finnhub takes "
+                          "from/to, so a past window is served rather than filtered out of a recent "
+                          "feed. sentiment's four sources are dead and global news is recent-only.")
     b.add_argument("--profile-set", default="openrouter_sonnet")
     b.add_argument("--repo", type=Path, default=Path.cwd(),
                    help="the repository root holding .jaato/ (default: cwd)")

@@ -48,10 +48,10 @@ summary of the outcome.
   Chosen for sector spread and a volatility range, deliberately not for past
   performance; none was selected after seeing any result of this experiment.
   Six sectors, so no single theme dominates as AI semis did in the pilot.
-- **Dates:** weekly, Mondays, **2025-11-03 → 2026-09-21** inclusive (46 dates).
-  The start is Finnhub's free-tier news horizon (~12 months); the end leaves
-  five sessions for resolution.
-- **Cells:** 12 × 46 = **552**, one run each. No repeats: the pilot already
+- **Dates:** weekly, Mondays, **2025-11-03 → 2026-09-21** inclusive (**47
+  dates** — see the amendment in §10). The start is Finnhub's free-tier news
+  horizon (~12 months); the end leaves five sessions for resolution.
+- **Cells:** 12 × 47 = **564**, one run each. No repeats: the pilot already
   established that the pipeline disagrees with itself, and re-measuring that
   spends cells on a known answer.
 - **Profile set:** `minimax_m3`.
@@ -81,8 +81,8 @@ and the **clustered interval is the one that decides the question**.
 
 **The result is positive only if the clustered 95 % CI excludes zero.**
 
-Power: ~386 directional calls expected (the pilot ran ~70 % directional). On a
-binary reading that is ±5.0 pp, enough to separate a 60 % hit rate from chance;
+Power: ~395 directional calls expected (the pilot ran ~70 % directional). On a
+binary reading that is ±4.9 pp, enough to separate a 60 % hit rate from chance;
 a 55 % edge would need ~783 and is out of reach here. A continuous measure is
 used precisely because it carries more information per observation than a
 hit rate.
@@ -164,3 +164,40 @@ changes before the run completes, the run is void.
 The order matters and is checkable in `git log`: this document is committed
 **before** the task files exist. A reader who doubts the ruler was fixed in
 advance can verify it there rather than taking anyone's word.
+
+
+---
+
+## 10. Amendments
+
+### 2026-10-06 — the date count was wrong, and the registration was not pushed
+
+Two corrections, both made before any cell ran, both recorded rather than
+quietly applied.
+
+**The count was a fencepost error.** 2025-11-03 to 2026-09-21 is 322 days,
+which is 46 *intervals* and therefore **47 dates** inclusive; the cells are
+**564**, not 552. The original figure counted the gaps between dates instead
+of the dates. Expected directional calls move 386 → 395 and the naive interval
+±5.0 → ±4.9 pp.
+
+**The window itself is unchanged.** Both endpoints were fixed in §3 and both
+stand; only the count derived from them was wrong. Moving the end date back a
+week so the total matched the number already written was considered and
+rejected: adjusting an experiment to fit a figure in its own registration is
+the exact failure this document exists to prevent, and it would have discarded
+twelve real observations to protect a typo.
+
+**The registration was committed on 2026-10-03 and not pushed until today.**
+It sat as a local commit while the branch it was on was merged without it, and
+was reported in the interim as having landed. It has not been edited in that
+window — the author date on the commit is 2026-10-03 and the content is as
+written then, apart from this section — but the ordering guarantee is weaker
+than §9 claims: a reader can see the task files and this document arrive in the
+same push, with this document as the earlier commit, rather than seeing it
+pushed days before the tasks existed. That is worth less than the original
+claim, and the difference is recorded here instead of being left for someone
+to discover.
+
+Nothing else changes: the primary measure, the date-clustered interval, the
+secondary list, the exclusions and the kill switch are as registered.
