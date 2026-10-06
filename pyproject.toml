@@ -19,6 +19,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# `sweep-board` only. Kept out of the base install: a dependency added for two
+# routes is a dependency added for ever, and the driver must stay runnable as a
+# jaato-eval arm without a web stack.
+board = ["starlette>=0.37", "uvicorn>=0.30"]
 
 [project.scripts]
 ta-cascade = "ta_cascade.cli:main"

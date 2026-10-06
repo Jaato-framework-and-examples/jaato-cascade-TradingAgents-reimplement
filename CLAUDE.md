@@ -158,7 +158,17 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
                            dated high/low, entry/stop/target, the rating; the holding period after
                            the as-of date when bars exist (a backtest cell). Drawn by code from the
                            same bars as the snapshot; the model never sees it. matplotlib, driver-side.
-  board.py                 BoardState: the run's progress as drawable state (pure, no renderer)
+  board.py                 BoardState: ONE run's progress as drawable state (pure, no renderer)
+  sweep.py                 a SWEEP's progress as drawable state (pure, no renderer): reads the
+                           task dirs (the denominator), results.jsonl (finished arms, with
+                           usage.cost_usd) and each arm workspace's sessions.jsonl (what is open
+                           now). Money and effort aggregate over ARMS, states over CELLS — keying
+                           results by cell drops every repeat but the last, and read the pilot's
+                           spend as $9 against a real $47.
+  ui/api.py, ui/static/    renderer #2: a READ-ONLY starlette board over those files.
+                           `python -m ta_cascade sweep-board <name> --port 8099 [--workspaces DIR]`.
+                           Starts no run, stops none, holds nothing: a sweep is launched with
+                           jaato-eval from a shell and outlives the board. `pip install -e .[board]`.
   richboard.py             the live two-panel view; the ONLY module that imports rich
   observer.py              cascade events -> trace lines; imports no SDK (testable daemon-free)
   contract.py              the jaato-eval driver contract (JAATO_EVAL_*): workspace, config root,

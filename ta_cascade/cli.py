@@ -65,6 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--profile-set", default="openrouter_sonnet")
     b.add_argument("--repo", type=Path, default=Path.cwd(),
                    help="the repository root holding .jaato/ (default: cwd)")
+    c = sub.add_parser("sweep-board", help="serve a read-only web board over a sweep's files")
+    c.add_argument("name", help="the matrix's name under backtests/")
+    c.add_argument("--host", default="127.0.0.1")
+    c.add_argument("--port", type=int, default=8099)
+    c.add_argument("--workspaces", help="the sweep's --workspaces dir, for in-flight arms "
+                                        "(needs jaato-eval --keep-workspaces)")
+    c.add_argument("--repo", type=Path, default=Path.cwd())
+
     return p
 
 
@@ -113,8 +121,30 @@ def _build_board(mode: str):
     return RichBoard(), True
 
 
+def _sweep_board(args) -> int:
+    """Serve the board. Read-only: it starts no run and holds no state.
+
+    A sweep is launched with `jaato-eval run` from a shell and outlives this
+    process, so restarting the board never disturbs a run and the board is
+    never on a run's critical path.
+    """
+    import uvicorn
+
+    from .ui.api import create_app
+
+    base = args.repo / "backtests" / args.name
+    app = create_app(tasks_dir=base / "tasks", results_path=base / "results.jsonl",
+                     workspaces_dir=Path(args.workspaces) if args.workspaces else None,
+                     name=args.name)
+    print(f"sweep board for {args.name} on http://{args.host}:{args.port}  (ctrl-c to stop)")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "sweep-board":
+        return _sweep_board(args)
     if args.command == "backtest-tasks":
         return _backtest_tasks(args)
     try:
