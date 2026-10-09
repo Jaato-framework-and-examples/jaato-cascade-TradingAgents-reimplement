@@ -310,8 +310,14 @@ uses `IPCRecoveryClient.session(...)` with `client_type=ClientType.API`
 (keeps `signal_completion` on the wire; the daemon strips it for
 terminal/web/chat clients), a real `env_file` (`None` crashes the
 handshake), `connect_timeout=120` (cold autostart takes 30-60 s), and
-`cascade_driver_id` shared by every node of one run (they share one warm
-runner slot; an observer can attach by that id). Decision rationale: the
+`cascade_driver_id` shared by every node of one run (an observer can attach
+by that id). **That is slot AFFINITY, not one slot per run**: a slot serves
+one session, and this pipeline holds several sessions of the same cascade open
+at once — two debaters, then three risk panellists — so each of those claims
+and stamps a slot of its own. Measured over a sweep batch: 5
+`cascade reuse MISS` to 6 `HIT` per 11-session run, i.e. **~5 runner
+processes per concurrent run**, each ~170 MB. It is what makes a sweep's
+memory scale with `concurrency × 5`, not `concurrency` (jaato#1622). Decision rationale: the
 in-process facade applies only `model/provider/plugins/plugin_configs/
 completion_payload_schema/suppress_base_instructions` of a named profile and
 silently ignores `completion_processors`, `spawn_payload_schema`,

@@ -274,14 +274,34 @@ already present, re-runs all seven cells instead of freezing them.
 | AAPL/2025-12-15 | BLOCKED | 120 | 1 | killed by SIGTERM — the operator's `pkill` |
 
 **The operational condition, which is what voids them.** Every one of the
-seven ran while the host was thrashing. Each arm of this sweep is its own
-cascade, so a pooled runner slot stamped with one arm's cascade id cannot
-serve the next: `PoolManager.acquire_slot` logged **5 `cascade reuse MISS` to
-1 `HIT`**, every arm cold-forked a fresh runner, and the pool replenished
-itself to `idle_count=8/8` warm slots no arm could claim. The box reached
-**23–25 runner processes holding 4.0–4.3 GB**, available memory fell
-2257 → 617 MB and swap was fully consumed (2047/2047 MB). The sweep was
-stopped to avoid an OOM kill, and the four BLOCKED arms are that stop.
+seven ran while the host was thrashing. The box reached **23–25 runner
+processes**, available memory fell 2257 → 617 MB and swap was fully consumed
+(2047/2047 MB). The sweep was stopped to avoid an OOM kill, and the four
+BLOCKED arms are that stop.
+
+**Why 23–25 runners for 4 arms.** One arm does not hold one runner slot. The
+pipeline keeps several sessions of the same cascade open at once — two
+long-lived debaters, then three risk panellists — and a slot serves one
+session, so each additional concurrent session claims and stamps another slot
+for that cascade. Counted over the whole batch from `/tmp/jaato.log.1`,
+`PoolManager.acquire_slot` logged **29 `cascade reuse MISS` to 19 `HIT`**
+across the seven cascades, and each of the two arms that finished shows **5
+MISS / 6 HIT** over its 11 sessions. So the live demand is roughly
+`concurrency × 5`, not `concurrency`; at 4 that is ~20 slots, plus the idle
+floor and the per-cascade reservations that linger for the pool's 300 s
+cascade-idle timeout — which is the 23–25 observed.
+
+*A correction to the first version of this paragraph, same day:* it said each
+arm "cold-forked a fresh runner" on a MISS and quoted 5 MISS to 1 HIT. Both
+were wrong. The 5:1 was a six-acquire sample taken during the arms' startup,
+where every first acquire is necessarily a MISS; the batch ratio is the 29:19
+above. And a MISS does not cold-fork: `acquire_slot` path (2) takes a PURE
+IDLE slot and stamps it, which is warm — "fresh slot" in the log line means
+freshly stamped, not freshly spawned. Cold-spawn is only the path where no
+idle slot qualifies at all. `jaato-eval`'s advice to keep
+`JAATO_RUNNER_POOL_SIZE >= concurrency` is therefore right about latency, and
+the idle slots it adds are capped by `JAATO_RUNNER_POOL_MAX_SIZE`
+(default 2 × size); neither is what the memory went on.
 
 **Why the whole batch and not the four.** The condition declared above is a
 property of the batch, not of an arm: it was visible on the host, it applies

@@ -1318,6 +1318,64 @@ Until it is fixed, judge this workspace by `tier` (`--json`) or
 `grep '[workspace]'`, not by the exit code. Not a workaround in code — no
 driver behaviour depends on it — just how to read the output.
 
+### A sweep's memory scales with concurrency × 5, not concurrency (2026-10-09, jaato#1622)
+
+The first batch of the 564-cell `predict-2026-10` sweep was launched at
+`--concurrency 4` and had to be abandoned: the box reached **23–25
+`jaato_server.server.runner` processes**, available memory fell 2257 → 617 MB
+and swap was fully consumed (2047/2047 MB). Seven arms had been recorded, all
+seven are voided, and the registration says so
+(`docs/preregistration-2026-10.md` §10, 2026-10-09).
+
+**Why, with the evidence.** A runner slot serves ONE session. A cascade's
+sessions share slot *affinity* through `cascade_driver_id`, which is not the
+same as sharing a slot — and this pipeline deliberately keeps several sessions
+of one cascade open at the same time: the bull and bear debate on two
+long-lived sessions, the risk panel on three. Each of those concurrent
+sessions therefore takes a PURE IDLE slot and stamps it with the same cascade
+(`PoolManager.acquire_slot` path 2). Counted from `/tmp/jaato.log.1` over the
+batch's seven cascades: **29 `cascade reuse MISS` to 19 `HIT`**, and each of
+the two arms that completed shows **5 MISS / 6 HIT** across its 11 sessions.
+So one arm holds about five runner processes at peak, ~170 MB each. Four
+concurrent arms is ~20, plus the virgin floor (`JAATO_RUNNER_POOL_SIZE`) and
+the per-cascade reservations that linger for the pool's 300 s
+`cascade_idle_timeout_seconds` — which is the 23–25 observed. Re-running at
+`--concurrency 2` with the pool at its default 2 gives 9–11 runners, the same
+ratio.
+
+**A MISS is not a cold spawn,** and the first version of this finding said it
+was. `acquire_slot` logs "cascade reuse MISS — fresh slot" when it takes a
+warm pure-idle slot and stamps it; "fresh" means freshly stamped. Cold-spawn
+is only the path where no idle slot qualifies at all. So the latency half of
+`jaato-eval`'s pool advice is sound and `JAATO_RUNNER_POOL_SIZE` is not what
+the memory went on.
+
+**Filed as jaato#1622**, because what is wrong is in the framework and not
+here: `jaato-eval`'s `pool_size_advice` prints
+`JAATO_RUNNER_POOL_SIZE should be >= {concurrency}` on the stated assumption
+that "each simultaneous arm needs its own warm slot", which holds for a
+single-session arm and for a strictly sequential cascade but not for a
+`harness.kind: driver` arm with concurrent sessions. It is the only guidance a
+sweep planner is given, it is read as a resource estimate, and it understates
+this harness by 5×. The issue suggests the sweep report observed
+slots-per-arm from the daemon's own `cascade_slot_reuse_*` counters after the
+first arm, rather than guessing.
+
+**What this repository changes: nothing in code.** The number to pick is
+`--concurrency`, and it is picked from measurement — `concurrency × 5 × 170 MB`
+is the floor on what a sweep will occupy, against `free -m`'s *available*
+column, not its *free* one. No driver behaviour depends on the pool, and
+adding a knob here to compensate for a framework estimate would be the
+workaround this project does not write. `CLAUDE.md` §4 carried the wrong claim
+("they share one warm runner slot") and has been corrected.
+
+**One thing this does not explain.** `AAPL/2025-11-03` FAILed at
+`fundamentals_analyst` with `DriverStoppedShort: driver exited 1`,
+`nudges=0`, `finish=stop`, no budget ceiling reached and no gate refusal — so
+it is neither nudge exhaustion nor a budget abort, and there is no evidence
+either way on whether contention caused it. Carried as open: if that cell
+fails the same way on a quiet host, the cause is in the pipeline.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
