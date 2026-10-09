@@ -53,20 +53,85 @@ Rough map of what was learned about the reference (v0.4.2) is in
 
 ### Dependencies
 
-- `jaato-sdk` (the client library) and, wherever the daemon runs,
-  `jaato-server`. During development both were **editable installs from a
-  sibling checkout of the jaato repository** (`pip install -e jaato-sdk/.
-  -e jaato-server/.`); there is no published wheel yet. `pyproject.toml`
-  declares only `jaato-sdk`.
-- `pandas`, `yfinance`, `requests` for the data layer; `pytest` for tests.
-- The `jaato-scaffold` and `jaato-doctor` console scripts come with those
-  packages. **Run them from the same Python environment as the daemon.**
+**This repository is a jaato CLIENT. It holds its own venv with the SDK and
+its own dependencies, and it does NOT hold `jaato-server`.**
+
+The daemon is a shared service living in its own environment; a client reaches
+it over IPC. Installing the server into a client venv couples the client's
+build to the daemon's and makes them move together, which is the opposite of
+what a shared daemon is for.
 
 ```bash
 python -m venv .venv
-.venv/bin/pip install -e /path/to/jaato/jaato-sdk -e /path/to/jaato/jaato-server
-.venv/bin/pip install -e ".[dev]"
+# The SDK and jaato-eval are both PUBLISHED packages. On a release both come
+# from PyPI; this venv currently tracks release candidates, which live on
+# TestPyPI, so the two index flags are needed and `--pre` is what allows an rc.
+# Pass BOTH indexes: TestPyPI alone cannot resolve pandas/yfinance/starlette.
+.venv/bin/pip install -e ".[dev,board,sweep]" --pre \
+    --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/
 ```
+
+Making TestPyPI the PRIMARY index lets pip substitute any dependency that has
+a newer build published there, so take a `pip freeze` before and after and
+diff it: on 2026-10-09 each of the two installs moved exactly one line. The
+absence of a complaint from pip is not the same evidence.
+
+- `jaato-scaffold` and `jaato-doctor` come with **jaato-sdk**, so a client venv
+  has both. `validate` needs no local server: it DELEGATES, and says so —
+  `[validated by the daemon at /tmp/jaato.sock (jaato-server 1.3.0) — not this venv]`.
+- **`jaato-eval` is a third package** (the `sweep` extra), neither the SDK nor
+  jaato-server, and the sweep must be launched from THIS venv. Its contract
+  sets `JAATO_EVAL_PYTHON = sys.executable` — the interpreter jaato-eval itself
+  runs under — and every `task.yaml` writes `harness.run` and its graders
+  against that variable. So the process that starts a sweep decides the
+  interpreter all 564 arms execute the driver with: launch it from the daemon's
+  venv and every arm runs the DAEMON's python, which is the client/daemon
+  coupling this layout exists to remove. See `docs/gaps.md`, 2026-10-09.
+- `pandas`, `yfinance`, `requests`, `matplotlib` for the data layer and chart;
+  `pytest` and `PyYAML` for tests; `starlette`/`uvicorn` for `sweep-board`
+  (`[board]`). PyYAML used to arrive transitively from jaato-server and was
+  never declared — two tests skipped silently the first time the venv was
+  built correctly.
+- **`jaato-doctor` reports one FAIL in a correct client venv**:
+  `import jaato_server … required for autostart`. It does not apply here —
+  `RunConfig.auto_start=False` against a shared daemon never starts one — and
+  the `jaato_server checkout` skew check degrades to a WARN for the same
+  reason. Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
+  2026-10-09 on 0.30.0rc6 (TestPyPI): 137 unit tests and the full end-to-end
+  tier pass from a venv holding only the SDK, against a daemon running from an
+  entirely different environment. Moving the client's SDK is a deliberate
+  step, not a consequence of pulling jaato: the daemon's venv is reinstalled
+  from the checkout after a pull, the client tracks a PUBLISHED SDK and moves
+  when someone decides to. `jaato-doctor`'s `package releases` check is what
+  says a newer one exists, and after moving, re-run
+  `jaato-scaffold integration claude-code --force` — the skill ships with the
+  SDK and doctor reports the copy stale by version.
+- **Do not trust `jaato_sdk checkout` PASS — it cannot fail here**
+  (jaato#1610). It reports "client and daemon both resolve jaato_sdk from
+  <path>" while printing OUR path as the daemon's. Its guard tests
+  `realpath(/proc/<pid>/exe) != realpath(sys.executable)`, and a venv's
+  `bin/python` is a symlink to the system binary, so two venvs over one system
+  Python collapse to the same realpath: the guard never fires and the fallback
+  compares our site-packages with itself. Since `dependency coherence` and
+  `jaato_server checkout` are already unavailable (#1576), NOTHING in doctor
+  currently detects a client/daemon framework mismatch for us. Check it by
+  hand when it matters:
+  `/home/apanoia/.local/share/jaato/venv/bin/python -c 'import jaato_sdk; print(jaato_sdk.__file__)'`
+  against `.venv/bin/python -c` the same. The mismatch it is meant to predict
+  is silent by construction — pydantic drops an unknown event field on ingest
+  and the `AttributeError` surfaces frames away from the cause.
+- **`jaato-scaffold validate <workspace>` exits 1 on findings that are not
+  this workspace's.** It walks the USER tier too (`~/.jaato/profiles/`, a real
+  fallback in the resolution path) and, as of jaato `0ccb7069`, 13 errors in
+  other projects' profiles there decide the exit code: 105 of the 108 lines
+  printed are theirs. So the §10 pre-commit gate
+  (`validate --set openrouter_sonnet && validate --set echo`) now fails for a
+  cause nobody can fix from this repo. Read the `tier` field
+  (`--json`) or `grep '\[workspace\]'` and judge OUR findings by those;
+  `--profile <name>` scopes to one profile and exits 0. Baseline for this
+  workspace, unchanged since 2026-10-06: openrouter_sonnet 3 warn,
+  minimax_m3 3 warn, echo 2 warn + 13 info, **zero errors**.
 
 ### Commands
 
@@ -96,7 +161,7 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 
 # tests
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
-.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~5 min, starts a private daemon
+.venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~5 min, needs a REACHABLE daemon
 
 # backtests: the driver as a jaato-eval ARM (harness.kind: driver, jaato#1110)
 python -m ta_cascade backtest-tasks pilot --tickers NVDA,AMD --from 2026-04-03 --to 2026-08-28 --every 7
@@ -158,7 +223,17 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
                            dated high/low, entry/stop/target, the rating; the holding period after
                            the as-of date when bars exist (a backtest cell). Drawn by code from the
                            same bars as the snapshot; the model never sees it. matplotlib, driver-side.
-  board.py                 BoardState: the run's progress as drawable state (pure, no renderer)
+  board.py                 BoardState: ONE run's progress as drawable state (pure, no renderer)
+  sweep.py                 a SWEEP's progress as drawable state (pure, no renderer): reads the
+                           task dirs (the denominator), results.jsonl (finished arms, with
+                           usage.cost_usd) and each arm workspace's sessions.jsonl (what is open
+                           now). Money and effort aggregate over ARMS, states over CELLS — keying
+                           results by cell drops every repeat but the last, and read the pilot's
+                           spend as $9 against a real $47.
+  ui/api.py, ui/static/    renderer #2: a READ-ONLY starlette board over those files.
+                           `python -m ta_cascade sweep-board <name> --port 8099 [--workspaces DIR]`.
+                           Starts no run, stops none, holds nothing: a sweep is launched with
+                           jaato-eval from a shell and outlives the board. `pip install -e .[board]`.
   richboard.py             the live two-panel view; the ONLY module that imports rich
   observer.py              cascade events -> trace lines; imports no SDK (testable daemon-free)
   contract.py              the jaato-eval driver contract (JAATO_EVAL_*): workspace, config root,

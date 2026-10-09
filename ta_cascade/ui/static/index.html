@@ -1,0 +1,140 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sweep board</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --panel:#fff; --ink:#1c1f23; --soft:#6b7280; --rule:#e2e0dc;
+    --pending:#d6d3cd; --running:#3b82f6; --pass:#2f855a; --fail:#b23a2e;
+    --blocked:#b4820f; --error:#7a2520;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){ :root{
+    --bg:#15171a; --panel:#1d2024; --ink:#e6e4e0; --soft:#9aa1aa; --rule:#31363c;
+    --pending:#3a3f45; --running:#60a5fa; --pass:#4ade80; --fail:#f87171;
+    --blocked:#fbbf24; --error:#dc2626; color-scheme:dark; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1500px;margin:0 auto;padding:20px}
+  h1{font-size:1.2rem;margin:0 0 .15rem;font-weight:600}
+  .sub{color:var(--soft);font-size:.8rem;font-family:ui-monospace,monospace;margin-bottom:1rem;
+       word-break:break-all}
+  .tiles{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:1rem}
+  .tile{background:var(--panel);border:1px solid var(--rule);border-radius:5px;padding:.6rem .7rem}
+  .tile .k{font-size:.67rem;letter-spacing:.09em;text-transform:uppercase;color:var(--soft)}
+  .tile .v{font-size:1.45rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.25}
+  .tile .n{font-size:.72rem;color:var(--soft)}
+  .bar{height:8px;background:var(--pending);border-radius:4px;overflow:hidden;margin:.1rem 0 1.2rem}
+  .bar>i{display:block;height:100%;background:var(--pass)}
+  .legend{display:flex;flex-wrap:wrap;gap:.9rem;font-size:.76rem;color:var(--soft);margin-bottom:.6rem}
+  .legend span{display:flex;align-items:center;gap:.3rem}
+  .dot{width:10px;height:10px;border-radius:2px;display:inline-block}
+  .gridwrap{overflow-x:auto;background:var(--panel);border:1px solid var(--rule);border-radius:5px;padding:.7rem}
+  table{border-collapse:collapse;font-size:.72rem}
+  th{font-weight:500;color:var(--soft);text-align:left;padding:.15rem .3rem;
+     font-family:ui-monospace,monospace;white-space:nowrap}
+  th.d{writing-mode:vertical-rl;transform:rotate(180deg);font-size:.62rem;padding:.2rem 0}
+  td{padding:1px}
+  .c{width:15px;height:15px;border-radius:2px;display:block}
+  .pending{background:var(--pending)} .running{background:var(--running)}
+  .PASS{background:var(--pass)} .FAIL{background:var(--fail)}
+  .BLOCKED{background:var(--blocked)} .ERROR{background:var(--error)}
+  .running{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.running{animation:none}}
+  h2{font-size:.86rem;margin:1.4rem 0 .5rem;font-weight:600}
+  .live{background:var(--panel);border:1px solid var(--rule);border-radius:5px;padding:.6rem .7rem;
+        font-family:ui-monospace,monospace;font-size:.76rem}
+  .live div{display:flex;justify-content:space-between;gap:1rem;padding:.12rem 0}
+  .muted{color:var(--soft)}
+</style>
+
+<div class="wrap">
+  <h1 id="name">sweep board</h1>
+  <div class="sub" id="paths"></div>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="bar"><i id="bar" style="width:0%"></i></div>
+
+  <div class="legend">
+    <span><i class="dot pending"></i>pending</span>
+    <span><i class="dot running"></i>running</span>
+    <span><i class="dot PASS"></i>PASS</span>
+    <span><i class="dot FAIL"></i>FAIL</span>
+    <span><i class="dot BLOCKED"></i>BLOCKED</span>
+    <span><i class="dot ERROR"></i>ERROR</span>
+  </div>
+
+  <div class="gridwrap"><table id="grid"></table></div>
+
+  <h2>in flight</h2>
+  <div class="live" id="live"><span class="muted">nothing running</span></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const dur = s => { s = Math.round(s||0); const h=(s/3600)|0, m=((s%3600)/60)|0;
+                   return h ? `${h}h ${m}m` : `${m}m ${s%60}s`; };
+
+function tile(k, v, n) {
+  return `<div class="tile"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div>` +
+         (n ? `<div class="n">${esc(n)}</div>` : "") + `</div>`;
+}
+
+function render(d) {
+  $("#name").textContent = d.name || "sweep board";
+  $("#paths").textContent = `${d.paths.results}  ·  workspaces: ${d.paths.workspaces || "(not kept)"}`;
+
+  const c = d.counts || {};
+  // Money: null means withheld on purpose, never zero. A subscription provider
+  // reports effort and no cost, and a part-priced sum would read as a bill.
+  const m = d.money || {};
+  const money = m.cost_usd == null
+      ? (m.priced ? `${m.priced}/${m.arms} priced` : "not priced")
+      : `$${m.cost_usd.toFixed(2)}`;
+  $("#tiles").innerHTML =
+      tile("progress", `${Math.round(100*(d.progress||0))}%`, `${d.settled} of ${d.total} cells`) +
+      tile("running",  c.running || 0, "open right now") +
+      tile("pending",  c.pending || 0, "not started") +
+      tile("pass / fail", `${d.graded.pass} / ${d.graded.fail}`, `${d.graded.of} graded`) +
+      tile("blocked",  (c.BLOCKED||0) + (c.ERROR||0), "ungradeable or errored") +
+      tile("cost",     money, `${m.arms||0} arms`) +
+      tile("elapsed",  dur(d.effort.seconds), `${d.effort.sessions} sessions`);
+  $("#bar").style.width = `${100*(d.progress||0)}%`;
+
+  // grid: tickers down, dates across — the whole sweep in one frame
+  const tickers = [...new Set(d.cells.map(x => x.ticker))];
+  const dates = [...new Set(d.cells.map(x => x.date))].sort();
+  const by = Object.fromEntries(d.cells.map(x => [x.cell, x]));
+  let h = "<tr><th></th>" + dates.map(dt => `<th class="d">${esc(dt)}</th>`).join("") + "</tr>";
+  for (const t of tickers) {
+    h += `<tr><th>${esc(t)}</th>` + dates.map(dt => {
+      const x = by[`${t}/${dt}`];
+      if (!x) return "<td></td>";
+      const bits = [x.cell, x.state];
+      if (x.stage) bits.push(`stage ${x.stage}`);
+      if (x.cost_usd != null) bits.push(`$${x.cost_usd.toFixed(3)}`);
+      if (x.seconds) bits.push(dur(x.seconds));
+      if (x.arms > 1) bits.push(`${x.arms} arms`);
+      if (x.blocked_reason) bits.push(x.blocked_reason);
+      if (x.error) bits.push(x.error);
+      return `<td><i class="c ${esc(x.state)}" title="${esc(bits.join(" · "))}"></i></td>`;
+    }).join("") + "</tr>";
+  }
+  $("#grid").innerHTML = h;
+
+  const live = d.cells.filter(x => x.state === "running");
+  $("#live").innerHTML = live.length
+    ? live.map(x => `<div><span>${esc(x.cell)}</span>` +
+        `<span class="muted">${esc(x.stage || "")} · ${x.stages_ended||0}/${x.stages_started||0} stages</span></div>`).join("")
+    : `<span class="muted">nothing running</span>`;
+}
+
+async function tick() {
+  try { render(await (await fetch("/api/sweep", {cache: "no-store"})).json()); }
+  catch (e) { $("#paths").textContent = "cannot reach the board: " + e; }
+}
+tick(); setInterval(tick, 5000);
+</script>

@@ -18,7 +18,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "PyYAML>=6.0"]  # PyYAML: the task-manifest tests. It used to arrive
+                                      # transitively from jaato-server; a client venv that
+                                      # holds only the SDK does not pull it, and two tests
+                                      # skipped silently until one did.
+# `sweep-board` only. Kept out of the base install: a dependency added for two
+# routes is a dependency added for ever, and the driver must stay runnable as a
+# jaato-eval arm without a web stack.
+board = ["starlette>=0.37", "uvicorn>=0.30"]
+# `jaato-eval run` only — the backtest matrices under backtests/ are launched
+# with it, and it is a THIRD package: not the SDK, not jaato-server. It was
+# only ever reachable here because the shared venv happened to hold it, the
+# same way PyYAML was (see `dev` above), so it is declared rather than
+# assumed. It depends on PyYAML and `jaato-sdk>=0.30.0.dev0` and NOT on
+# jaato-server, which is why a client venv can hold it at all; that SDK floor
+# is above the base floor below, which stays at what the DRIVER itself needs.
+# An rc, because the SDK this venv tracks is one and the pair must move in
+# step; it lives on TestPyPI, so installing this extra needs
+#   --pre --index-url https://test.pypi.org/simple/ \
+#         --extra-index-url https://pypi.org/simple/
+sweep = ["jaato-eval>=0.3.5rc1"]
 
 [project.scripts]
 ta-cascade = "ta_cascade.cli:main"
@@ -30,5 +49,5 @@ include = ["ta_cascade*"]
 testpaths = ["tests"]
 addopts = "-ra"
 markers = [
-    "daemon: starts a jaato daemon on a private socket (slow, needs jaato-server importable)",
+    "daemon: runs against a REACHABLE daemon — shares the one on /tmp/jaato.sock (or TA_E2E_SOCKET); slow, starts no daemon, imports no jaato_server",
 ]

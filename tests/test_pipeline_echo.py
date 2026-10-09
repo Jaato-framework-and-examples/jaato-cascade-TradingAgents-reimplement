@@ -30,7 +30,11 @@ from ta_cascade.config import RunConfig
 from ta_cascade.memory import DecisionLog
 
 REPO = Path(__file__).resolve().parents[1]
-jaato_server = pytest.importorskip("jaato_server", reason="jaato-server (the daemon) is not installed")
+# No guard on `jaato_server`: a CLIENT holds the SDK and talks to a shared
+# daemon over IPC, so the server package has no business in this venv — and
+# while this tier started its own daemon it did, which made the whole tier skip
+# itself the moment the environment was built correctly. What it needs is a
+# daemon REACHABLE, and the workspace fixture fails loudly when there is none.
 
 pytestmark = pytest.mark.daemon
 
