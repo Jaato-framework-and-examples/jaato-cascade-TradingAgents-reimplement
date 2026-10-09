@@ -158,7 +158,7 @@ changes before the run completes, the run is void.
 | registered | 2026-10-03 |
 | scorer frozen at | `ta_cascade/score.py` as of the commit that adds this file |
 | tasks generated | *(after this file is committed)* |
-| run started | *(to be filled)* |
+| run started | **2026-10-09** (AAPL batch first; see §10) |
 | run completed | *(to be filled)* |
 
 The order matters and is checkable in `git log`: this document is committed
@@ -201,3 +201,52 @@ to discover.
 
 Nothing else changes: the primary measure, the date-clustered interval, the
 secondary list, the exclusions and the kill switch are as registered.
+
+### 2026-10-09 — the run is executed in batches, and why that is not a peek
+
+The 564 cells are run in batches rather than in one sweep, starting with the
+47 AAPL cells. This is an **operational** decision with one scientific
+constraint attached, and the constraint is the reason it is written down.
+
+**Why batches.** §7 excludes a cell that produces no decision and declares the
+experiment inconclusive if more than 10 % of cells (57) are excluded. So the
+binding risk is not wall-clock but the exclusion budget: an arm that dies of
+resource contention or provider throttling spends it just as surely as a
+pipeline fault. Three things were unmeasured before the first batch — the
+failure rate on `minimax_m3` with three analysts, whether MiniMax throttles
+concurrent requests on a subscription plan (neither
+`explain provider minimax` nor the profile set documents a limit), and peak
+memory at concurrency 4 on a shared box where the end-to-end suite has been
+OOM-killed twice. Measuring those on 47 cells rather than 564 is cheaper in
+exclusions, and `--resume` makes the remainder a continuation rather than a
+re-run.
+
+**The ticker was chosen without reference to any outcome.** AAPL is first
+alphabetically among the twelve. No price, return, or prior result entered the
+choice, and the batch is the whole 47-date column for that ticker, not a
+subset of its dates.
+
+**What the batch may be read for, and what it may not.** Between batches the
+only quantities consulted are operational: arm state counts, error strings,
+wall-clock, memory. **Pass rate, hit rate, and any directional result are not
+consulted, and no batch boundary is a decision point about whether to
+continue.** All 564 cells are run regardless of what the first 47 score,
+because the primary measure in §4 is declared over the full sample and a
+sample truncated after seeing its outcome is not that measure. This document
+declares no interim-analysis rule and none is being added; if the sweep is
+abandoned it will be for an operational reason, named here, with the cells
+that ran reported as the exclusions they are.
+
+The distinction matters because this project has already made the opposite
+mistake once: the 2026-09-19 pilot was re-read after the fact with cells
+removed on grounds discovered by looking at them. Batching for resources is
+not that. Batching and then stopping because the early numbers looked good —
+or bad — would be.
+
+**Order does not affect grading.** Each cell is graded against its own
+realised returns over its own holding period (§6), so the sequence in which
+cells run cannot change any cell's score.
+
+**The scorer is unchanged.** `ta_cascade/score.py` is byte-identical to its
+state at the registration commit `a9f9ed0`, verified before the first batch
+launched, as §6 requires.
