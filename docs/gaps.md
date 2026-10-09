@@ -1285,9 +1285,13 @@ the package `__init__.py` (`artifact_tracker`, `ast_search`, `anthropic_auth`
 that does. So one missing constant silently disarms 11 premium profiles: they
 come up without the tools they declare, and nothing at session time says so.
 
-This is the SECOND HALF OF jaato#1217, which was noted as still unfiled. It
-is not ours to fix (jaato-premium, and the daemon's venv), but validate now
-surfaces it on every run of this ritual, which is how it resurfaced.
+Filed 2026-10-09 as **jaato-premium#81**, split out of jaato#1217 where it was
+recorded as a separate defect awaiting its own ticket. Not ours to fix
+(jaato-premium, in the daemon's venv), but validate surfaces it on every run
+of this ritual, which is how it resurfaced. Note the fix is probably
+package-wide, not only `auto_steering`: 13 of premium's 14 packages declare no
+`PLUGIN_TIER`, and they stay quiet only because no shipped profile names them
+yet.
 
 Walking the user tier is defensible by itself: `~/.jaato/profiles/` is a real
 fallback in the resolution path, and a profile name this workspace does not
@@ -1298,6 +1302,17 @@ the environment, not a fault in the target. Two consequences here: the §10
 pre-commit gate (`validate --set openrouter_sonnet && validate --set echo`)
 fails on every commit touching `.jaato/` for a cause no one can fix from this
 repo, and 105 of 108 printed lines bury the 3 that are ours.
+
+Already filed as **jaato#1217** (open), with a fresh reproduction added
+2026-10-09: the three foreign counts are byte-identical to the original report
+on sdk 0.26.0 / server 0.20.0 / premium 0.1.207 — `user error 13 / info 21 /
+warn 71` — while this workspace's own went 16 warn -> 3 warn. The exit code
+never moved, because it was never reporting on the workspace. 105 of 108
+printed lines are foreign: 3% of the output is about the target.
+
+And in a correct client/daemon split the author cannot even SEE the packages
+that decide their exit code — `jaato-premium` lives in the daemon's venv, not
+the client's.
 
 Until it is fixed, judge this workspace by `tier` (`--json`) or
 `grep '[workspace]'`, not by the exit code. Not a workaround in code — no
