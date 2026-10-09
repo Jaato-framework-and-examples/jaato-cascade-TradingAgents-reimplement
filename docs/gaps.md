@@ -1253,12 +1253,41 @@ Evidence:
   `tier: workspace` and number 3 / 3 / 2+13 across the three sets — the
   baseline unchanged since 2026-10-06, with **zero errors**.
 * The run also walks the USER tier and reports **105 further findings,
-  including all 13 errors**, from profiles belonging to other projects of this
-  user: `editor-assistant`, `gen-references`,
-  `analyst-codebase-documentation`, `validator-tier2-java-spring`,
-  `skill-mod-code-*`. Twelve are `plugin_missing_tier`, one `unknown_plugin`.
+  including all 13 errors**. Corrected 2026-10-09 (an earlier version of this
+  entry called them "other projects of this user", which is wrong for 11 of
+  the 13): **11 are jaato-premium's OWN bundled profiles**, which the daemon
+  discovers because `jaato-premium` 0.1.209 is installed in ITS venv —
+  `skill-mod-code-*`, `skill-code-001-add-circuit-breaker-java-resilience4j`.
+  The remaining two are the user's, from `~/.jaato/profiles/`:
+  `editor-assistant` and `gen-references`. So most of what buries our findings
+  ships with the framework rather than belonging to a neighbour, which makes
+  the exit-code coupling worse, not better — a client cannot remove them.
 * `validate . --set minimax_m3` → exit **1**;
   `validate . --set minimax_m3 --profile trader` → exit **0**.
+
+Two of those 13 are a stale profile of the user's, and the other **11 share
+one root cause** — worth separating from the exit-code defect, because it is a
+real disarming of real profiles rather than noise:
+
+```
+[error] skill-mod-code-002-retry: plugin_missing_tier: plugin 'auto_steering'
+  declares no PLUGIN_TIER, so the runner will not load it — this session would
+  come up without its tools. Add PLUGIN_TIER = "runner" to the plugin
+  package's __init__.py
+```
+
+All 11 name `auto_steering`, and the source confirms the validator:
+`jaato_premium/auto_steering/__init__.py` declares no `PLUGIN_TIER`. The
+convention is established on both sides — jaato's own plugins declare it in
+the package `__init__.py` (`artifact_tracker`, `ast_search`, `anthropic_auth`
+…), and premium's own `session_ops` declares
+`PLUGIN_TIER = "daemon_callable"`; it is the only one of premium's 14 packages
+that does. So one missing constant silently disarms 11 premium profiles: they
+come up without the tools they declare, and nothing at session time says so.
+
+This is the SECOND HALF OF jaato#1217, which was noted as still unfiled. It
+is not ours to fix (jaato-premium, and the daemon's venv), but validate now
+surfaces it on every run of this ritual, which is how it resurfaced.
 
 Walking the user tier is defensible by itself: `~/.jaato/profiles/` is a real
 fallback in the resolution path, and a profile name this workspace does not
