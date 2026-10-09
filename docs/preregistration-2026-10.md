@@ -336,3 +336,27 @@ returns — so this is a resource decision, recorded because it is the reason
 the batch is being run twice. Measured arm duration is **~530 s**, not the
 pilot's 343 s (which was Sonnet with four analysts), so the full matrix is
 ~83 arm-hours and the AAPL batch ~3.5 h at concurrency 2.
+
+The re-run was launched verbatim as, from the CLIENT venv (so that
+`JAATO_EVAL_PYTHON` is the client's interpreter — see `docs/gaps.md`,
+2026-10-09):
+
+```
+.venv/bin/jaato-eval run backtests/predict-2026-10/tasks-probe-aapl \
+    --profile-set minimax_m3 --socket /tmp/jaato.sock \
+    --out backtests/predict-2026-10/results.jsonl \
+    --workspaces /tmp/predict-2026-10-ws \
+    --concurrency 2 --arm-timeout 2400 --resume --keep-workspaces
+```
+
+`tasks-probe-aapl/` holds the 47 AAPL `task.yaml` files copied byte-identical
+from `tasks/` and placed as its sibling, so `../../fixture` and
+`../../../../.jaato` resolve to the same paths; it is a batch selector, not a
+second definition of the cells. `--arm-timeout 2400` is ~4.5× the measured
+530 s: an arm that exceeds it is recorded `BLOCKED` and would spend an
+exclusion, so the ceiling is set to catch a hang rather than a slow arm. The
+voided batch's arm workspaces were moved to
+`/tmp/predict-2026-10-ws-VOIDED-thrash/` before the relaunch — the FAILed
+arm had left a driver resume journal in its workspace, and an arm that reused
+that directory would have resumed the voided run instead of starting the cell
+fresh.
