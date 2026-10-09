@@ -1094,6 +1094,127 @@ disabled, no global news and no current ratios, this is a REDUCED pipeline —
 market, news, statements-only fundamentals, and macro. Worth measuring, but not
 the four-analyst design.
 
+### The client venv moves to its own SDK (2026-10-09)
+
+The architecture settled on 2026-10-06 — a client holds its own venv with the
+SDK, the daemon is a shared service in its own environment — left one question
+open: when does the client's SDK move? Answer, now recorded in `CLAUDE.md` §2:
+when someone decides to, never as a side effect of pulling jaato. The daemon's
+venv is reinstalled from the checkout on every pull; the client tracks a
+PUBLISHED build, and `jaato-doctor`'s `package releases` check is the thing
+that says a newer one exists.
+
+Moved today: `jaato-sdk` 0.29.0 (PyPI) → **0.30.0rc6** (TestPyPI), against a
+daemon running jaato-server 1.3.0 from source at `0ccb7069`.
+
+* A `pip freeze` diff before and after changed **exactly one line**. Worth
+  doing: `--index-url test.pypi.org --extra-index-url pypi.org` makes TestPyPI
+  the PRIMARY index, so pip is free to substitute any dependency that happens
+  to have a newer build published there. It substituted none, but the diff is
+  what proves it rather than the absence of complaint.
+* **137 unit tests and all 3 end-to-end tests pass** (4 m 55 s). Only the
+  end-to-end tier means anything here: the unit tier never opens a session, so
+  it cannot see a wire-protocol change. Both tiers were run because the thing
+  that moved is the library that talks to the daemon.
+* `jaato-doctor` then reported the Claude Code skill copy stale by version
+  (`installed from 0.29.0, framework is 0.30.0rc6`) — the skill ships as SDK
+  package data, so moving the SDK stales it by construction. Re-run
+  `jaato-scaffold integration claude-code --force`. Doctor gained a `kernel
+  confinement` check in this build (N/A without jaato-server here), and the
+  SDK now carries a `references/apparmor.md`.
+### `jaato-eval` belongs to the client, and that fixes which interpreter an arm runs (2026-10-09)
+
+Moving the SDK surfaced that **`jaato-eval` was never in this venv**. It is a
+THIRD package — not the SDK, not jaato-server — and it was only ever reachable
+because the shared daemon venv happened to hold it. So the client venv as
+`CLAUDE.md` §2 builds it could not launch the 564-cell sweep at all.
+
+It is now declared as a `sweep` extra in `pyproject.toml` and installed
+(`jaato-eval` 0.3.5rc1 from TestPyPI; one line in a `pip freeze` diff, nothing
+substituted). It fits a client venv because it depends on PyYAML and
+`jaato-sdk>=0.30.0.dev0` and **not** on jaato-server — and note that floor: on
+0.29.0 it would not have installed, so moving the SDK was its prerequisite
+rather than a coincidence.
+
+The part that matters is not tidiness. `contract.py` sets
+
+```python
+contract["JAATO_EVAL_PYTHON"] = sys.executable
+```
+
+— **the interpreter jaato-eval itself runs under**, which every task's
+`harness.run` and every `script` grader is written against. So the environment
+that launches the sweep decides the interpreter each of the 564 arms executes
+the driver with. Launching from the daemon venv hands every arm the DAEMON's
+python, which is why that venv still carries `ta-cascade` (editable, pointing
+at this repo) plus pandas, yfinance and matplotlib: the pilot ran on the
+coupling the client/daemon split was meant to remove. Launching from the
+client venv fixes it at the root — no flag, no wrapper, just the right process
+starting the sweep.
+
+Two residues worth knowing:
+
+* The two venvs are slightly skewed — pandas 3.0.5 / numpy 2.5.0 in the
+  daemon's, 3.0.6 / 2.5.3 in the client's. Patch-level and not a concern for
+  the indicator maths, but it means the pilot's arms and this repo's unit
+  tests did not run on the same build.
+* `ta_cascade` in the daemon venv is **not** purely accidental:
+  `.jaato/scripts/prefetch_sentiment.py` runs inside the runner and imports
+  it (see §4, Prefetch). That path is only used by the sentiment analyst,
+  which is out of `DEFAULT_ANALYSTS` and out of this sweep — so the sweep does
+  not need it, but removing it from the daemon venv would break a sentiment
+  run.
+
+Verified from the client venv, with the daemon at jaato-server 1.3.0:
+
+* `discover_tasks()` parses **all 564** manifests — 564 distinct task ids, 12
+  tickers x 47 dates, every one `harness.kind: driver`, `profile_set:
+  minimax_m3`, one `script` grader, `repeats: 1` -> 564 arms. The matrix the
+  installed jaato-eval sees is the registered design.
+* `budget` resolves to an empty `BudgetSpec(limits={}, degrade=[])`, not a
+  pool, so the generator's "no budget block on purpose" comment still holds
+  and each stage's own `budget_control` governs.
+* One throwaway `echo` arm run through the CLI end to end: PASS, results
+  written, cost rendered `—` rather than `$0.00` (the same three-state money
+  rule `sweep.py` keeps).
+
+`jaato-eval run` prints `JAATO_RUNNER_POOL_SIZE should be >= N` on every run.
+It is static advice — `pool_size_advice(concurrency)` reads no environment
+(`cli.py:96`) — not a reading of the daemon's actual pool, so it is not
+evidence that the pool is short.
+
+### `validate` exits 1 on other projects' profiles (2026-10-09)
+
+`jaato-scaffold validate . --set <set>` now exits **1** on this workspace, and
+nothing in this workspace causes it.
+
+Evidence:
+
+* `--json` tags every finding with a `tier`. This workspace's findings are
+  `tier: workspace` and number 3 / 3 / 2+13 across the three sets — the
+  baseline unchanged since 2026-10-06, with **zero errors**.
+* The run also walks the USER tier and reports **105 further findings,
+  including all 13 errors**, from profiles belonging to other projects of this
+  user: `editor-assistant`, `gen-references`,
+  `analyst-codebase-documentation`, `validator-tier2-java-spring`,
+  `skill-mod-code-*`. Twelve are `plugin_missing_tier`, one `unknown_plugin`.
+* `validate . --set minimax_m3` → exit **1**;
+  `validate . --set minimax_m3 --profile trader` → exit **0**.
+
+Walking the user tier is defensible by itself: `~/.jaato/profiles/` is a real
+fallback in the resolution path, and a profile name this workspace does not
+define can resolve there, so a reader should know it is broken. The defect is
+narrower — **the exit code ignores the tier the target names**. `validate
+<workspace>` is a verdict on that workspace; a user-tier error is a fact about
+the environment, not a fault in the target. Two consequences here: the §10
+pre-commit gate (`validate --set openrouter_sonnet && validate --set echo`)
+fails on every commit touching `.jaato/` for a cause no one can fix from this
+repo, and 105 of 108 printed lines bury the 3 that are ours.
+
+Until it is fixed, judge this workspace by `tier` (`--json`) or
+`grep '[workspace]'`, not by the exit code. Not a workaround in code — no
+driver behaviour depends on it — just how to read the output.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
