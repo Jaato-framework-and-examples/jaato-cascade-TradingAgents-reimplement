@@ -107,6 +107,20 @@ absence of a complaint from pip is not the same evidence.
   says a newer one exists, and after moving, re-run
   `jaato-scaffold integration claude-code --force` — the skill ships with the
   SDK and doctor reports the copy stale by version.
+- **Do not trust `jaato_sdk checkout` PASS — it cannot fail here**
+  (jaato#1610). It reports "client and daemon both resolve jaato_sdk from
+  <path>" while printing OUR path as the daemon's. Its guard tests
+  `realpath(/proc/<pid>/exe) != realpath(sys.executable)`, and a venv's
+  `bin/python` is a symlink to the system binary, so two venvs over one system
+  Python collapse to the same realpath: the guard never fires and the fallback
+  compares our site-packages with itself. Since `dependency coherence` and
+  `jaato_server checkout` are already unavailable (#1576), NOTHING in doctor
+  currently detects a client/daemon framework mismatch for us. Check it by
+  hand when it matters:
+  `/home/apanoia/.local/share/jaato/venv/bin/python -c 'import jaato_sdk; print(jaato_sdk.__file__)'`
+  against `.venv/bin/python -c` the same. The mismatch it is meant to predict
+  is silent by construction — pydantic drops an unknown event field on ingest
+  and the `AttributeError` surfaces frames away from the cause.
 - **`jaato-scaffold validate <workspace>` exits 1 on findings that are not
   this workspace's.** It walks the USER tier too (`~/.jaato/profiles/`, a real
   fallback in the resolution path) and, as of jaato `0ccb7069`, 13 errors in

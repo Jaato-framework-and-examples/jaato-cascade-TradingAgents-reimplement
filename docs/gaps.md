@@ -1183,6 +1183,65 @@ It is static advice — `pool_size_advice(concurrency)` reads no environment
 (`cli.py:96`) — not a reading of the daemon's actual pool, so it is not
 evidence that the pool is short.
 
+### The one check that could catch a client/daemon skew cannot fail (2026-10-09, jaato#1610)
+
+The 2026-10-09 pull left `jaato-doctor` reporting
+
+```
+✔ PASS  jaato_sdk checkout   client and daemon both resolve jaato_sdk from
+                             …/.venv/lib/python3.12/site-packages/jaato_sdk (0.30.0rc6).
+```
+
+They do not. The daemon imports the editable source checkout
+(`…/jaato/jaato-sdk/jaato_sdk/__init__.py`, 0.30.0); this venv imports the
+installed rc (0.30.0rc6). A source tree against an installed copy is the case
+`_skew_verdict` grades **FAIL** by design. Doctor printed OUR path as the
+daemon's and called it agreement.
+
+Root cause, every predicate measured rather than argued:
+
+```
+info.executable   : /usr/bin/python3.12        <- readlink /proc/<pid>/exe
+sys.executable    : …/.venv/bin/python
+realpaths equal?  : True
+other_interpreter : False          <- the guard needs True to fire
+daemon PYTHONPATH : (empty)
+_resolve_package_on(entries, "jaato_sdk") : None
+_daemon_package_dir("jaato_sdk", …)       : (…/.venv/…/jaato_sdk,
+                                   'the installed package — the same one you resolve')
+```
+
+`check_checkout_skew` guards the installed-package fallback with
+`realpath(info.executable) != realpath(sys.executable)`. A venv's `bin/python`
+is a symlink to the system binary, so **two venvs over one system Python
+collapse to the same realpath**. Every condition for the WARN holds except
+that one, so the guard is skipped and the fallback answers with the caller's
+own site-packages — its own source string admits the assumption, "the same one
+you resolve". The fix has to compare ENVIRONMENTS (`/proc/<pid>/cmdline`
+argv[0] names the daemon's venv interpreter; `VIRTUAL_ENV` is absent when a
+daemon is started by absolute path, as ours is), not binaries.
+
+Why it matters here rather than in general: the client-venv split
+*guarantees* the two sides run different builds, and `dependency coherence`
+and `jaato_server checkout` are already unavailable to us under #1576 — they
+say so honestly. So `jaato_sdk checkout` is the only remaining check that
+could detect a framework mismatch, and it asserts health instead. A false PASS
+is the dangerous direction, because the failure it predicts is silent by
+construction: pydantic drops the unknown event field on ingest and the
+`AttributeError` surfaces frames from the cause.
+
+Until it is fixed, compare by hand when it matters:
+
+```bash
+/home/apanoia/.local/share/jaato/venv/bin/python -c 'import jaato_sdk; print(jaato_sdk.__file__)'
+.venv/bin/python -c 'import jaato_sdk; print(jaato_sdk.__file__)'
+```
+
+Worth noting for our own habit: this was found only because the ritual asks
+doctor to prove no skew between client and daemon. The check it relies on for
+that has been vacuous for as long as the client has had its own venv, and the
+PASS is what hid it — three health checks in a row reported it green.
+
 ### `validate` exits 1 on other projects' profiles (2026-10-09)
 
 `jaato-scaffold validate . --set <set>` now exits **1** on this workspace, and
