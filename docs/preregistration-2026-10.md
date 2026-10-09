@@ -250,3 +250,69 @@ cells run cannot change any cell's score.
 **The scorer is unchanged.** `ta_cascade/score.py` is byte-identical to its
 state at the registration commit `a9f9ed0`, verified before the first batch
 launched, as §6 requires.
+
+### 2026-10-09 — the first AAPL batch is voided in full, before it is re-run
+
+The AAPL batch described above was launched at concurrency 4 and stopped
+after seven arms. **All seven are voided — including the two that passed.**
+They are preserved verbatim as
+`backtests/predict-2026-10/results-VOIDED-2026-10-09-thrash.jsonl`; nothing is
+edited and nothing is deleted. The file is renamed rather than kept as
+`results.jsonl` precisely so that `--resume`, which skips every `task_id`
+already present, re-runs all seven cells instead of freezing them.
+
+**What the seven were.**
+
+| cell | state | s | turns | why |
+|---|---|---|---|---|
+| AAPL/2025-11-03 | FAIL | 296 | 3 | `DriverStoppedShort: driver exited 1`, stopped at `fundamentals_analyst` |
+| AAPL/2025-11-10 | PASS | 531 | 11 | — |
+| AAPL/2025-11-17 | PASS | 528 | 11 | — |
+| AAPL/2025-11-24 | BLOCKED | 653 | 9 | killed by SIGTERM — the operator's `pkill` |
+| AAPL/2025-12-01 | BLOCKED | 357 | 7 | killed by SIGTERM — the operator's `pkill` |
+| AAPL/2025-12-08 | BLOCKED | 123 | 2 | killed by SIGTERM — the operator's `pkill` |
+| AAPL/2025-12-15 | BLOCKED | 120 | 1 | killed by SIGTERM — the operator's `pkill` |
+
+**The operational condition, which is what voids them.** Every one of the
+seven ran while the host was thrashing. Each arm of this sweep is its own
+cascade, so a pooled runner slot stamped with one arm's cascade id cannot
+serve the next: `PoolManager.acquire_slot` logged **5 `cascade reuse MISS` to
+1 `HIT`**, every arm cold-forked a fresh runner, and the pool replenished
+itself to `idle_count=8/8` warm slots no arm could claim. The box reached
+**23–25 runner processes holding 4.0–4.3 GB**, available memory fell
+2257 → 617 MB and swap was fully consumed (2047/2047 MB). The sweep was
+stopped to avoid an OOM kill, and the four BLOCKED arms are that stop.
+
+**Why the whole batch and not the four.** The condition declared above is a
+property of the batch, not of an arm: it was visible on the host, it applies
+uniformly to all seven, and it was identified from memory and pool telemetry
+rather than from any score. Keeping the two PASSes and the FAIL and re-running
+only the four killed arms was considered and rejected — it would retain
+exactly the arms that happened to finish under the pathological condition,
+which is a survivorship filter, and the author has by now seen all seven
+states. Once an outcome has been seen, the only honest exclusion rule is one
+that cannot select on it, and "every arm in the batch" is that rule.
+
+**These seven do not spend the §7 exclusion budget.** §7 excludes cells that
+produce no decision *in the recorded run*; a voided batch is not a recorded
+run, and the cells are re-run from scratch. Were the four BLOCKED arms instead
+left in `results.jsonl`, they would have consumed 4 of the 57 permitted
+exclusions for a cause that is purely the operator's, which is the second
+reason for the rename.
+
+**The one open question is carried, not resolved.** AAPL/2025-11-03 failed at
+`fundamentals_analyst` with `nudges=0`, `finish=stop`, no budget ceiling
+reached and no gate refusal — so it is not nudge exhaustion and not a budget
+abort, and there is no evidence either way on whether contention caused it.
+If that cell fails the same way on the re-run, with the host quiet, the cause
+is in the pipeline and belongs in `docs/gaps.md`.
+
+**The re-run changes concurrency only.** The batch is relaunched at
+`--concurrency 2` against a daemon at its default pool target of 2. No task
+file, persona, profile, schema, gate or scorer is touched: `score.py` is still
+byte-identical to `a9f9ed0`. Concurrency is not a registered quantity — §4's
+measure is over cells, and §6 grades each cell against its own realised
+returns — so this is a resource decision, recorded because it is the reason
+the batch is being run twice. Measured arm duration is **~530 s**, not the
+pilot's 343 s (which was Sonnet with four analysts), so the full matrix is
+~83 arm-hours and the AAPL batch ~3.5 h at concurrency 2.
