@@ -502,3 +502,67 @@ the analyst's to make after seeing the data:
 finishes so that whichever is chosen, it was chosen against a stated rate
 and not fitted to the final numbers. Any change takes effect as a dated
 amendment in this section, before the batch it applies to.
+
+### 2026-10-11, 13:55 — the third batch is STOPPED at 33 of 47: Finnhub went down
+
+`finnhub.io`'s news endpoints began refusing connections at about 13:38 and
+were still refusing at 13:55. Measured directly from the client venv, three
+times:
+
+```
+news (company, Finnhub)          40.60s   ConnectTimeout: HTTPSConnectionPool(host='finnhub.io'…)
+global_news (Finnhub)            40.10s   ConnectTimeout
+insider_transactions (Finnhub)    1.11s   served
+macro ×3 (FRED)                  ~1.0s    served
+```
+
+**The failure chain, every link measured.** `FINNHUB_TIMEOUT_S` is 20 s but a
+connect timeout is retried once, so the wall time is ~40 s. That is longer
+than the DAEMON's 30 s client-tool budget, so the daemon answers the model
+first with a raw `{"error": "Client tool get_company_news timed out after
+30.0s"}`; and it is shorter than our own `TOOL_BUDGET_S` of 45 s, so the
+`DATA_UNAVAILABLE … Do not estimate or invent these values` sentence — the
+whole of the data layer's contract — is never delivered. The news analyst,
+given no data and no instruction, reported the failure in `errors[]`, and a
+non-empty `errors[]` stops the run. Four arms died this way consecutively,
+five in all.
+
+The sweep was stopped with `SIGINT` to the `jaato-eval` parent (the real
+process, not the `nohup` wrapper — signalling the wrapper does nothing).
+**33 arms settled, 0 `BLOCKED`, so no §7 exclusion was spent.**
+
+**The outage separates cleanly from the data, and that is checked, not
+assumed.** Seven arm workspaces contain the 30 s timeout string — 2026-05-18,
+-05-25, -06-01, -06-08, -06-15, -06-22, -06-29 — and **none of the 26 arms
+carrying a rating is among them**. The rated cells all ran before 13:38.
+
+| population | arms | pipeline failures | rate |
+|---|---|---|---|
+| before the outage | 28 | 2 | **7%** — the empty-array trap, `docs/gaps.md` 2026-10-11 |
+| during the outage | 5 | 5 | **100%** |
+
+The 21% over all 33 arms mixes two populations and should not be quoted as
+one rate.
+
+**Where the 26 rated cells stand** (operational, not an analysis):
+ratings Hold 18, Underweight 5, Overweight 3; directional 8/26 (31%);
+directional hits 3/8; mean `direction × alpha` −0.0070 with sd 0.024 on
+n = 8, which is noise at that size and is recorded only so the §4 statistic
+is visible as it accumulates.
+
+**The directional rate is the finding that bears on the remaining 517.** §4
+sized the experiment on the pilot's ~70% directional rate — ~395 directional
+calls, ±4.9 pp, "enough to separate a 60% hit rate from chance". Across 26
+rated cells M3 is directional 31% of the time. Held over 564 cells that is
+~175 directional calls and an interval near ±7.4 pp, below the power §4
+declared it needed. This is a sample-size property, not an outcome, so
+consulting it between batches is within §4's terms; what to do about it —
+accept a wider interval, enlarge the matrix, or change the instrument — is a
+decision for the operator and must be amended here before the batch it
+applies to.
+
+**Nothing is voided yet.** The five outage arms are recorded `FAIL`, which
+`--resume` skips, so they cannot simply be re-run; the question of whether
+an external vendor outage is a §7 exclusion is the open question above, now
+with a concrete instance. The two arms lost to the empty-array trap are a
+separate case with a separate cause.
