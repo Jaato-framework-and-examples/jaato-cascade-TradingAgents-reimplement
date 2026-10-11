@@ -1591,6 +1591,37 @@ changes are proposed for the batch boundary:
   required array, which makes it the framework's to carry rather than this
   driver's.
 
+**Second instance, 24 arms in, and it narrows the cause.** `AAPL/2026-04-27`
+died the same way at the RESEARCH MANAGER, six sessions in:
+
+```
+prep errors   = "[]"                               (string)
+prep warnings = "[\"Headline valuation ratios …"   (string holding JSON)
+prep errors   = ""
+prep warnings = ["Headline valuation ratios we…]   <- correct ARRAY, second try
+prep errors   = ["none"]                           <- correct array, placeholder content
+signal(args)
+```
+
+The model mangles an array value once and then **gets it right** — `warnings`
+arrives as a proper array on the retry. What it never produces is an EMPTY
+array: for `errors`, whose correct value is `[]`, it substituted `["none"]`.
+
+So the trap is not array typing, which works. It is specifically **a required
+array whose correct value is empty**, and that is the whole of it. Two
+consequences:
+
+- The proposed fix is the right shape: dropping `errors`/`warnings` from
+  `required` removes exactly the field the model cannot express and leaves
+  array handling, which is fine, untouched.
+- `"none"` is the placeholder the schema's own description forbids **by
+  name**, and `minLength: 1` accepts it at four characters. A description does
+  not constrain a model; structure does. That is the second time in two days
+  this repository has learned it — the first was the `[""]` these descriptions
+  also already forbade.
+
+Rate after 24 arms: 2 lost (~8%).
+
 
 **A better way to stop a sweep, learned here.** `SIGINT` to the `jaato-eval`
 parent recorded three arms and **zero BLOCKED** — the two in flight were
