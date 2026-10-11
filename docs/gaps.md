@@ -1198,6 +1198,13 @@ installed rc (0.30.0rc6). A source tree against an installed copy is the case
 `_skew_verdict` grades **FAIL** by design. Doctor printed OUR path as the
 daemon's and called it agreement.
 
+Re-checked by hand on 2026-10-11 before launching the third AAPL batch, with
+the recipe this file prescribes: still 0.30.0 (daemon, source checkout)
+against 0.30.0rc6 (this venv), and doctor still PASSes. The pairing is not a
+blocker — it is what the two completed arms of batch one and the whole
+end-to-end tier ran against — but no check in doctor would tell us if it
+became one.
+
 Root cause, every predicate measured rather than argued:
 
 ```
@@ -1472,6 +1479,64 @@ simply not written, so `--resume` re-runs them. `pkill` on the driver
 processes, which is what was done two batches earlier, recorded four arms as
 `BLOCKED` and would have spent four of the 57 permitted exclusions on the
 operator.
+
+**But SIGINT stops the RECORD, not the work** (found 2026-10-11, while
+preparing the third batch). Two arm workspaces for cells the stop had left
+unrecorded — `AAPL/2025-11-24` and `AAPL/2025-12-01` — were sitting in the
+live `--workspaces` root with directory mtimes of 23:05 and 23:07, *later*
+than the copies already moved aside at 22:55 and 22:58, and carrying a
+`report.md` those copies did not have. The arm drivers had outlived the
+parent: the move pulled their directories out from under them, they
+recreated them and ran on to write a report (2–3 and ~7 sessions, against
+the 11 of a settled arm).
+
+Two consequences, both operational:
+
+- **Wait for the drivers to exit before touching workspaces.** Moving a
+  workspace while its driver runs does not orphan the driver, it orphans the
+  directory: a fresh one appears in its place and the voided run finishes
+  into it.
+- **An unrecorded arm is not an arm that did not run.** These two spent real
+  provider budget that appears in no `results.jsonl`, so a sweep's cost read
+  from the results file alone understates what was actually bought. It is
+  the same shape of error as keying `sweep.py` by cell instead of by arm,
+  which read the pilot's $47 as $9.
+
+They were moved to `/tmp/predict-2026-10-ws-VOIDED-orphans-after-sigint/`
+rather than deleted, for the same reason the other two batches were: the
+re-run reuses arm workspace paths deterministically, and
+`python -m ta_cascade.score` grades whatever report tree it finds under
+`./results`. A voided run's `portfolio_decision` left in place would have
+been graded as the new one's if a re-run failed before overwriting it.
+
+### `--no-memory` does not gate the READ of past decisions (2026-10-11)
+
+Every backtest arm runs the driver with `--no-memory`, and `cli.py:194`
+turns that into `record_decision=False, resolve_pending=False`. Both are
+honoured. But `pipeline.run` builds `past_context=memory.past_context(...)`
+unconditionally a few lines further down, so the flag suppresses *writing* a
+decision and *scoring* the pending ones while still **reading** the log and
+handing it to the portfolio manager.
+
+The log it reads is `~/.ta_cascade/decisions.jsonl` by default
+(`config.py:119`) — one file shared by every arm of every sweep and every
+manual run on the box, unless `TA_CASCADE_DECISION_LOG` says otherwise, and
+no `task.yaml` sets it.
+
+**Nothing leaked into the AAPL batch, and the reason is the point-in-time
+filter, not the flag.** The shared log holds four entries, two of them
+`resolved` (NVDA 2026-09-04 and 2026-09-22). `past_context` keeps a resolved
+entry only when `resolved_on <= as_of`, and `as_of` is the cell's trade date
+— every AAPL cell is in 2025, every resolution is in 2026, so the filter
+drops both and `past_context` is `""` for all 47 cells. Verified by reading
+the log and the filter, not inferred from the flag.
+
+So this is a latent gap rather than a live defect: a cell at or near the
+present date would be served another ticker's lessons from whatever else
+had run on the machine. It is deliberately **not** fixed while a batch is in
+flight — changing `pipeline.run` mid-sweep would mean the 47 arms did not
+all run the same pipeline, which is the one thing a batch has to guarantee.
+
 
 ## Feature parity with the reference implementation
 

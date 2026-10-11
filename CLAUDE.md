@@ -173,6 +173,20 @@ python -m ta_cascade.score NVDA 2026-08-28      # grade one cell by hand (reads 
 Exit codes of the CLI: 0 finished; 1 a node failed (journal kept, re-run
 to resume); 2 daemon unreachable.
 
+**Stopping a sweep, and re-running what it was doing.** Send `SIGINT` to the
+`jaato-eval` parent: it records nothing for the arms in flight, so `--resume`
+re-runs them. Never `pkill` the driver processes — that records them
+`BLOCKED`, which `--resume` then skips permanently and which spends a
+pre-registered exclusion. Then **wait for the arm drivers to exit** before
+touching anything: they outlive the parent, and a workspace moved out from
+under a live driver is simply recreated and finished into. Before re-running
+a batch, the live `--workspaces` root must hold no resume journal
+(`.ta_cascade/journal/`) and no `results/` tree from the voided run — arm
+workspace names are deterministic, so a reused directory resumes the old run,
+and `ta_cascade.score` grades whatever report tree it finds. Move the old
+root aside under a name that says why; do not delete it. (`docs/gaps.md`,
+2026-10-11.)
+
 ### Introspection is the source of truth for jaato
 
 Do not read jaato source to learn what the framework offers; ask it:

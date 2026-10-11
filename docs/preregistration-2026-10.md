@@ -421,3 +421,54 @@ three arms and no `BLOCKED` — the two in flight were not written at all, so
 four `BLOCKED` arms and would have spent four exclusions on the operator. The
 difference is recorded because it is the operational procedure for every
 remaining batch.
+
+**A correction to that paragraph, 2026-10-11.** `SIGINT` stops the *record*,
+not the work. Two arm workspaces for the unrecorded cells were found in the
+live `--workspaces` root with mtimes *later* than the copies moved aside, and
+carrying a `report.md` those copies lacked: the arm drivers outlived the
+parent, the move pulled their directories out from under them, and they
+recreated them and finished writing. So the procedure has a second step —
+wait for the driver processes to exit before moving any workspace aside — and
+a caveat: an unrecorded arm still spent provider budget, so a batch's cost
+read from `results.jsonl` alone is a floor, not the total. See
+`docs/gaps.md`, 2026-10-11.
+
+### 2026-10-11 — the third AAPL batch, launched after the fix
+
+Launched at 11:21 local from the client venv, verbatim, with the command
+§9 already records:
+
+```
+.venv/bin/jaato-eval run backtests/predict-2026-10/tasks-probe-aapl \
+    --profile-set minimax_m3 --socket /tmp/jaato.sock \
+    --out backtests/predict-2026-10/results.jsonl \
+    --workspaces /tmp/predict-2026-10-ws \
+    --concurrency 2 --arm-timeout 2400 --resume --keep-workspaces
+```
+
+**What was checked first**, so that a reader can tell a clean start from a
+contaminated one:
+
+| precondition | state at launch |
+|---|---|
+| `backtests/predict-2026-10/results.jsonl` | absent — the two voided batches are renamed, so `--resume` has nothing to skip and all 47 cells run |
+| `/tmp/predict-2026-10-ws/` | **empty** — three voided sets moved aside: `-VOIDED-thrash`, `-VOIDED-broken-get-fundamentals`, `-VOIDED-orphans-after-sigint` |
+| resume journals | none anywhere under the live root (`.ta_cascade/journal/`), so no arm resumes a voided run |
+| voided report trees | none under the live root, so no grader can grade a voided `portfolio_decision` |
+| the fix | committed before launch — `b53e0f7` (the NameError and its test), `32eb4ab` (`minLength: 1` on all five schemas) |
+| tests | unit tier 138 passed; end-to-end tier 3 passed |
+| profile sets | `jaato-scaffold validate` unchanged on all three: 3 warn / 3 warn / 2 warn + 13 info, zero workspace-tier errors |
+| client ↔ daemon | checked by hand, since no doctor check can (jaato#1610): client SDK 0.30.0rc6 against the daemon's 0.30.0 source checkout — the same pairing batch one's completed arms and the end-to-end tier ran against |
+| `tasks-probe-aapl/` | the 47 `task.yaml` files verified byte-identical to `tasks/` at commit `69a234e` |
+
+`past_context` is `""` for all 47 cells. Each arm runs with `--no-memory`,
+which gates recording and pending-resolution but not the read; the read is
+empty anyway because the shared decision log's only two resolved entries
+resolve in 2026 and every cell's as-of date is in 2025, so the point-in-time
+filter drops them. Recorded because it is a property of the data the model
+saw, not of the flag (`docs/gaps.md`, 2026-10-11).
+
+Nothing about §4's measure, §6's scorer, §7's exclusions or the 564-cell
+matrix changes here. The 47 AAPL cells remain a batch of the pre-registered
+sample, and what is consulted between batches stays operational: wall-clock,
+memory, spend, and the states that §7 already defines.
