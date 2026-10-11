@@ -1473,6 +1473,33 @@ withholds the `info` ratios from a historical cell, so a working
 which the model also receives in `instrument_context`. What the analyst could
 SEE barely changes. What changes is that a third of the arms stop dying.
 
+**And possibly which FIELD the analyst files it under** (first arm of the
+third batch, 2026-10-11 — one observation, stated as a hypothesis the batch
+will settle). Both sentences open with `DATA_UNAVAILABLE`, but they are not
+equivalent:
+
+| | what the analyst read |
+|---|---|
+| until 2026-10-11 | `DATA_UNAVAILABLE: <lambda> could not be retrieved (NameError: name 'stale' is not defined)` |
+| after | `DATA_UNAVAILABLE: the info block's valuation and performance ratios are undated — they describe today, N days after <as_of> — so quoting them here would be reading the future. They are withheld. Use `get_statement` for figures dated on or before <as_of>…` |
+
+The second states a reason, says the withholding is deliberate, and names the
+substitute. The first states nothing. On `AAPL/2025-11-10` the analyst
+paraphrased the second accurately — "the headline ratios it normally returns
+were undated and described a date roughly 335 days after the analysis date —
+i.e. they would be reading the future. I am not using them. All numbers below
+come from the three statements." — and filed it under **`warnings`**, then
+wrote a full report from the statements. Under the broken sentence, the same
+tool's silence went into `errors[]` and stopped the run.
+
+If that holds across the batch, the persona edit considered as option D (tell
+the analysts explicitly that an unavailable tool is a warning) is unnecessary:
+the sentence that explains itself does the work, and the fix for the field
+choice was the fix for the bug. If some arms still file it under `errors`, the
+batch measures the rate, which is the number that would justify a
+model-facing change. Either way it was right NOT to edit the personas at the
+same time as fixing the bug — doing both would have made this unmeasurable.
+
 **A better way to stop a sweep, learned here.** `SIGINT` to the `jaato-eval`
 parent recorded three arms and **zero BLOCKED** — the two in flight were
 simply not written, so `--resume` re-runs them. `pkill` on the driver
