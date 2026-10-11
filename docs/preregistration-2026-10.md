@@ -360,3 +360,64 @@ voided batch's arm workspaces were moved to
 arm had left a driver resume journal in its workspace, and an arm that reused
 that directory would have resumed the voided run instead of starting the cell
 fresh.
+
+### 2026-10-11 — the second batch is voided too: the pipeline was broken, and the fix is declared here
+
+The AAPL batch re-run at concurrency 2 was stopped after three arms and **all
+three are voided**, preserved as
+`backtests/predict-2026-10/results-VOIDED-2026-10-09-broken-get-fundamentals.jsonl`.
+This voiding is not a judgement call: the cells have to be re-run whatever is
+decided, because all three ran against a tool that could not work.
+
+**What was wrong.** `ta_cascade/tools.py` built `get_fundamentals` with a
+lambda closing over a name that was never bound in its factory, so the tool
+answered `DATA_UNAVAILABLE: ... NameError: name 'stale' is not defined` on
+every call since 2026-10-03 — before the first cell of this experiment ran.
+Full diagnosis in `docs/gaps.md`, 2026-10-09.
+
+**Why it cost cells.** The analysts reported the unavailable tool honestly,
+and which field they put it in decided the arm: a non-empty `errors[]` stops
+the run, so the two arms that filed it under `errors` FAILed and the two that
+filed the same thing under `warnings` PASSed. Two FAILs in six settled arms
+across both batches, against §7's budget of 57 in 564. That rate, from a cause
+that is not the pipeline's behaviour under test, is what the batching in the
+amendment above exists to catch, and it caught it.
+
+**What the fix changes about what is under test, stated plainly.**
+
+- `get_fundamentals` now works. **This barely changes what the fundamentals
+  analyst can see**, and that is worth being precise about rather than
+  reassuring about: §2 already withholds the `info` block's ratios from a
+  historical cell as lookahead, so a working call returns the
+  withheld-notice plus the company's identity (`shortName`, `sector`,
+  `industry`) — which the model also receives in `instrument_context`. §2's
+  "fundamentals analyst: statements only" was true as registered and remains
+  true. What changes is that the stage stops dying.
+- `"minLength": 1` on the `errors[]` and `warnings[]` items of all five
+  completion schemas. A blank string is no longer representable, so the
+  `[""]` that failed AAPL/2025-11-17 is refused by the daemon at
+  `signal_completion` and the model is told why. The schemas' own
+  descriptions already said never to send a placeholder; this makes it a
+  constraint rather than a request.
+- `data.with_deadline` re-raises `NameError` / `AttributeError` instead of
+  rendering them as missing data, and a new unit test calls every tool
+  handler once. Neither is model-facing.
+
+**What was deliberately NOT changed.** Whether a tool reporting
+`DATA_UNAVAILABLE` belongs in `errors[]` or `warnings[]` is still the model's
+judgement, and the two batches show models split on it. Fixing that means
+editing the analyst personas, which is model-facing wording and therefore a
+change to what is under test. It is left open rather than slipped in while the
+experiment is running; if it is done, it will be a further amendment here,
+before the batch that uses it.
+
+**No scorer change.** `ta_cascade/score.py` is still byte-identical to
+`a9f9ed0`, as §6 requires. The sample, the measure, the exclusions and the
+kill switch are unchanged.
+
+**The stop was clean this time.** `SIGINT` to the `jaato-eval` parent recorded
+three arms and no `BLOCKED` — the two in flight were not written at all, so
+`--resume` re-runs them. The earlier `pkill` on the driver processes recorded
+four `BLOCKED` arms and would have spent four exclusions on the operator. The
+difference is recorded because it is the operational procedure for every
+remaining batch.
