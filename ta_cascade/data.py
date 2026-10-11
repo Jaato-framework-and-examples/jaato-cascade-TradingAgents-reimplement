@@ -26,6 +26,19 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 UNAVAILABLE = "DATA_UNAVAILABLE"
 
 
+#: Exceptions :func:`with_deadline` refuses to render as a data failure,
+#: because at ITS boundary they can only mean this code is wrong.
+#: ``with_deadline``'s sole caller is :func:`ta_cascade.tools._spec`, whose
+#: ``fn`` is one of our own tool lambdas; a lambda does nothing but call a
+#: function in this module, and those functions catch their own library
+#: errors, so a NameError or AttributeError arriving here came from the
+#: lambda layer and is a typo, not a dead endpoint.  Nothing analogous is
+#: done inside this module's own handlers: there the same exception usually
+#: IS the library failing on bad data, and guessing which it was would be
+#: the kind of inference the data contract exists to avoid.
+BUGS_NOT_DATA = (NameError, AttributeError)
+
+
 def with_deadline(seconds: float, fn, *args, **kwargs) -> str:
     """Run ``fn`` in a worker thread; on timeout return an UNAVAILABLE sentence.
 
@@ -33,6 +46,16 @@ def with_deadline(seconds: float, fn, *args, **kwargs) -> str:
     a session bootstrap or a tool call may take.  The worker is left to
     finish on its own (threads cannot be killed); the caller gets its answer
     on time either way.
+
+    **A bug in the caller is raised, not reported as missing data**
+    (:data:`BUGS_NOT_DATA`).  ``get_fundamentals`` closed over a name that
+    was never bound in its factory, and for six days every call answered
+    ``DATA_UNAVAILABLE: <lambda> could not be retrieved (NameError: name
+    'stale' is not defined)`` — indistinguishable from a dead endpoint, so
+    the analysts dutifully reported it as a source that was unavailable and
+    a third of a backtest's arms died of it.  The data layer promises never
+    to raise on a DATA failure; that promise was never meant to cover our
+    own typos.  See ``docs/gaps.md``, 2026-10-09.
     """
     import concurrent.futures as cf
     ex = cf.ThreadPoolExecutor(max_workers=1)
@@ -42,6 +65,8 @@ def with_deadline(seconds: float, fn, *args, **kwargs) -> str:
     except cf.TimeoutError:
         return (f"{UNAVAILABLE}: {getattr(fn, '__name__', 'fetch')} did not answer within "
                 f"{seconds:.0f}s. Do not estimate or invent these values.")
+    except BUGS_NOT_DATA:
+        raise
     except Exception as exc:  # noqa: BLE001
         return _unavailable(getattr(fn, "__name__", "fetch"), exc)
     finally:

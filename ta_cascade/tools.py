@@ -27,6 +27,10 @@ TOOL_BUDGET_S = 45.0
 
 def _spec(name: str, description: str, properties: Dict[str, Any], required: List[str],
           handler: Callable[[Dict[str, Any]], str]) -> Spec:
+    # `handler` is one of the lambdas below and contains only OUR code, so
+    # `with_deadline` re-raises a NameError or AttributeError from it instead
+    # of rendering it as DATA_UNAVAILABLE — see its docstring for why that
+    # distinction is drawn here and not inside the data layer.
     def guarded(args: Dict[str, Any]) -> str:
         return data.with_deadline(TOOL_BUDGET_S, handler, args)
 
@@ -130,6 +134,7 @@ def news_tools(cfg: RunConfig) -> List[Spec]:
 
 def fundamentals_tools(cfg: RunConfig) -> List[Spec]:
     as_of = cfg.trade_date
+    stale = cfg.max_stale_days
     freq = {"type": "string", "enum": ["quarterly", "annual"]}
     return [
         _spec(

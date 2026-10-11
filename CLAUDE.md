@@ -98,7 +98,7 @@ absence of a complaint from pip is not the same evidence.
   `RunConfig.auto_start=False` against a shared daemon never starts one — and
   the `jaato_server checkout` skew check degrades to a WARN for the same
   reason. Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
-  2026-10-09 on 0.30.0rc6 (TestPyPI): 137 unit tests and the full end-to-end
+  2026-10-09 on 0.30.0rc6 (TestPyPI): 138 unit tests and the full end-to-end
   tier pass from a venv holding only the SDK, against a daemon running from an
   entirely different environment. Moving the client's SDK is a deliberate
   step, not a consequence of pulling jaato: the daemon's venv is reinstalled
@@ -489,6 +489,18 @@ for `rules_read`.
 - Every public function returns `str` and never raises; the failure path
   returns `_unavailable(...)` text. Unknown indicator names, a missing
   credential, network errors, empty frames all become sentences.
+- **That promise covers DATA failures, not our own bugs.** `with_deadline`,
+  which wraps every tool handler, re-raises `NameError` and `AttributeError`
+  (`data.BUGS_NOT_DATA`) rather than rendering them as missing data. It used
+  to render them, and `get_fundamentals` answered `DATA_UNAVAILABLE ...
+  NameError: name 'stale' is not defined` for six days while the analysts
+  dutifully reported a source that was unavailable — a third of a backtest's
+  arms died of it. The narrowing applies at THAT boundary only, because
+  `with_deadline`'s one caller passes our own lambda; inside `data`'s own
+  handlers the same exception is usually the library choking on a bad
+  response. `gather_with_deadline` is unchanged: it runs at session-prep
+  inside the runner, where a raise kills the session (trap #1).
+  See `docs/gaps.md`, 2026-10-09.
 - **Credentials come from the pass store, one entry each, never a chain**
   (`_pass_secret`): `pass://jaato/finnhub/api-key`, `pass://jaato/fred/api-key`.
   A key that can arrive from several places fails in several ways and the one

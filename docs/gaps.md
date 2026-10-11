@@ -1376,6 +1376,103 @@ it is neither nudge exhaustion nor a budget abort, and there is no evidence
 either way on whether contention caused it. Carried as open: if that cell
 fails the same way on a quiet host, the cause is in the pipeline.
 
+### `get_fundamentals` raised a NameError for six days and nobody could tell (2026-10-09, fixed 2026-10-11)
+
+`ta_cascade/tools.py` built the fundamentals analyst's `get_fundamentals`
+spec with a lambda closing over `stale`, a name bound in `market_tools` and
+never in `fundamentals_tools`. Every call, every ticker, every date answered:
+
+```
+DATA_UNAVAILABLE: <lambda> could not be retrieved (NameError: name 'stale' is
+not defined). Do not estimate or invent these values; state that the data was
+unavailable.
+```
+
+Reproducible in one line, no network and no daemon — which is the measure of
+how cheap this was to catch and was not:
+
+```python
+tools.fundamentals_tools(RunConfig(ticker="AAPL", trade_date="2025-11-17"))
+```
+
+`git blame` puts it on `9a9aa2d`, 2026-10-03 — the commit that stopped the
+`info` block being lookahead. `fundamentals()` gained a `max_stale_days`
+keyword, `market_tools` gained the local binding it needed, and
+`fundamentals_tools` did not.
+
+**Three separate failures let it stand, and the fix addresses each.**
+
+**1. The exception was rendered as a data failure.** `data.with_deadline`
+caught everything and returned `_unavailable(...)`, so a typo in our own code
+produced a sentence indistinguishable from a dead endpoint. The data layer's
+contract — never raise, every failure is a sentence (§7 of `CLAUDE.md`) — is
+about DATA failures; it was never meant to cover our bugs. `with_deadline`
+now re-raises `NameError` and `AttributeError` (`data.BUGS_NOT_DATA`). The
+scope is deliberate and narrow: its only caller is `tools._spec`, whose `fn`
+is one of our own lambdas, and a lambda does nothing but call a function in
+`data` that already catches its own library errors — so one of those two
+exceptions arriving there is ours. The same narrowing is NOT applied inside
+`data`'s own handlers, where an `AttributeError` is usually yfinance choking
+on a bad response, and guessing which it was would be the inference the data
+contract exists to avoid. `gather_with_deadline` is also left alone: it runs
+the sentiment prefetch inside the runner at session-prep, where an exception
+kills the session (trap #1), and its job is isolation.
+
+**2. The test asserted the handler EXISTS.** `test_specs_are_well_formed`
+checks `callable(spec["handler"])`, and a lambda body is only resolved when it
+runs, so the unbound name was invisible to it.
+`test_every_handler_can_actually_be_called` now calls every handler once with
+the data layer stubbed and schema-derived arguments, so a new tool is covered
+the day it is added. **The first version of that test was worthless** — the
+stub loop replaced `with_deadline` too, so `guarded` returned the stub without
+ever running the lambda, and the test passed with the bug reintroduced.
+Verified the corrected version by reintroducing the bug: it fails with the
+NameError, which also proves the re-raise above works.
+
+**3. A non-empty `errors[]` stops the run, and a blank string is non-empty.**
+This is what turned one broken tool into lost cells. The analysts reported the
+unavailable tool honestly, and WHERE they reported it decided the arm:
+
+| cell | `errors[]` | arm |
+|---|---|---|
+| AAPL/2025-11-03 | `["get_fundamentals returned NameError ('stale'); no headline ratios available for valuation"]` | FAIL |
+| AAPL/2025-11-17 | `[""]` | FAIL |
+| AAPL/2025-11-10, AAPL/2025-11-03 | `[]`, same tool failure filed under `warnings` | PASS |
+
+Two FAILs in six settled arms, from one deterministic bug and a
+model-dependent choice of field. The schemas already SAID so — the `errors`
+description reads "never a placeholder such as "none", "n/a" or """ and "put
+anything that is merely a caveat in warnings" — and the model ignored it. A
+description is a request; `"minLength": 1` on the items is a constraint, so
+`[""]` is now refused by the daemon when `signal_completion` is validated and
+the model is told why, instead of being interpreted by the driver afterwards.
+Applied to all five schemas, not just `analyst_report`: the shape and the
+driver's rule are identical in every gated stage, and fixing one would have
+left the same trap in four.
+
+**What was NOT changed, and why.** A genuine `errors[]` entry still fails the
+stage — that is the contract, and it is right. Whether a tool reporting
+`DATA_UNAVAILABLE` *belongs* in `errors` or `warnings` is still decided by the
+model rather than by the pipeline, and making that a persona edit is a change
+to what is under test, so it is left open rather than slipped in
+mid-experiment.
+
+**Cost.** The second AAPL batch is voided
+(`results-VOIDED-2026-10-09-broken-get-fundamentals.jsonl`; registration §10),
+because all three of its arms ran against the broken tool. The scientific
+impact is smaller than the operational one: §2 of the registration already
+withholds the `info` ratios from a historical cell, so a working
+`get_fundamentals` returns the withheld-notice plus the company identity —
+which the model also receives in `instrument_context`. What the analyst could
+SEE barely changes. What changes is that a third of the arms stop dying.
+
+**A better way to stop a sweep, learned here.** `SIGINT` to the `jaato-eval`
+parent recorded three arms and **zero BLOCKED** — the two in flight were
+simply not written, so `--resume` re-runs them. `pkill` on the driver
+processes, which is what was done two batches earlier, recorded four arms as
+`BLOCKED` and would have spent four of the 57 permitted exclusions on the
+operator.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
