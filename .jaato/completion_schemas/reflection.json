@@ -19,14 +19,16 @@
     "errors": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "description": "Why this stage could not produce its result, if it could not. An EMPTY ARRAY means there was no error and the payload stands \u2014 never a placeholder such as \"none\", \"n/a\" or \"\". A non-empty errors array STOPS THE RUN, so put anything that is merely a caveat in warnings."
     },
     "warnings": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "description": "Caveats that do not invalidate the result: a source that was unavailable, a number that could not be verified, an assumption made. An EMPTY ARRAY means there are none \u2014 never a placeholder. Warnings never stop the run."
     }
