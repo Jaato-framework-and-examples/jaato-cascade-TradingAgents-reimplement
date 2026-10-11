@@ -472,3 +472,33 @@ Nothing about §4's measure, §6's scorer, §7's exclusions or the 564-cell
 matrix changes here. The 47 AAPL cells remain a batch of the pre-registered
 sample, and what is consulted between batches stays operational: wall-clock,
 memory, spend, and the states that §7 already defines.
+
+#### An open question §7 does not answer, raised 2026-10-11, not decided
+
+`AAPL/2026-02-23` ran all eleven sessions, produced a valid `Hold`, and was
+then discarded by the driver because the portfolio manager's `errors[]`
+arrived holding the string `no-error-placeholder` — a provider quirk in the
+field-by-field completion protocol, diagnosed in `docs/gaps.md`, 2026-10-11.
+
+That arm is recorded **`FAIL`**, not `BLOCKED`. So under §7 as written it
+spends **none** of the 57 permitted exclusions, while yielding no rating and
+therefore contributing nothing to §4. The sample shrinks and the kill switch
+does not move. At the observed rate — 1 of the first 17 arms — roughly 33 of
+564 cells would disappear that way.
+
+§7 distinguishes outcomes from infrastructure, and this is neither: the
+pipeline worked and the harness worked, and a provider's serialisation of one
+field threw the cell away. Three readings are available and the choice is not
+the analyst's to make after seeing the data:
+
+1. leave it a `FAIL` — the cell is lost, counted nowhere, §7 untouched;
+2. count a pipeline failure against the §7 budget, which would put these in
+   the same bucket as an operator's `pkill` and let ~6% trip a 10% switch;
+3. define a fourth state for "the run completed and the result was
+   discarded by a transport or protocol fault", excluded from §4 and
+   reported separately with its own rate.
+
+**No option is adopted here.** The question is recorded before the batch
+finishes so that whichever is chosen, it was chosen against a stated rate
+and not fitted to the final numbers. Any change takes effect as a dated
+amendment in this section, before the batch it applies to.
