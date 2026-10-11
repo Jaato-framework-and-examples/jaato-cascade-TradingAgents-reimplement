@@ -1200,7 +1200,12 @@ daemon's and called it agreement.
 
 Re-checked by hand on 2026-10-11 before launching the third AAPL batch, with
 the recipe this file prescribes: still 0.30.0 (daemon, source checkout)
-against 0.30.0rc6 (this venv), and doctor still PASSes. The pairing is not a
+against 0.30.0rc6 (this venv), and doctor still PASSes. Re-checked again after the
+2026-10-11 pull to `b120c2ce` and reported on the ticket: **both sides
+declare the same version strings** (jaato-sdk 0.30.0 vs 0.30.0rc6,
+jaato-server 1.3.0 either way), so a pull that changes behaviour without a
+version bump leaves nothing in pip, doctor or a session record to tell the
+two builds apart — only the commit. The pairing is not a
 blocker — it is what the two completed arms of batch one and the whole
 end-to-end tier ran against — but no check in doctor would tell us if it
 became one.
@@ -1507,7 +1512,7 @@ every one of its reports carries `errors: []`. But `AAPL/2026-02-23` died of
 PORTFOLIO MANAGER, which had nothing to report and no broken tool. See the
 next finding: the disease there is the protocol, not the sentence.
 
-### A required array that is normally empty is a trap in field-by-field completion (2026-10-11)
+### A required array that is normally empty is a trap in field-by-field completion (2026-10-11, jaato#1626)
 
 `AAPL/2026-02-23` completed every stage — three analyst reports, both
 debates, the research plan, the trader proposal — and then was discarded with
@@ -1585,11 +1590,15 @@ changes are proposed for the batch boundary:
   change** — it handles absence today. The cost is the strict-shape
   convention (`additionalProperties: false` plus exhaustive `required`) that
   every schema here follows.
-- **File it in jaato.** Eight turns of rejection never taught the model the
-  accepted shape, and the quirk doing the damage is one the provider profile
-  already declares. The trap is generic to any schema with a normally-empty
-  required array, which makes it the framework's to carry rather than this
-  driver's.
+- **Filed as jaato#1626.** Eight turns of rejection never taught the model
+  the accepted shape, and the quirk doing the damage is one the provider
+  profile already declares. The trap is generic to any schema with a
+  normally-empty required array, which makes it the framework's to carry
+  rather than this driver's. The issue asks first for a rejection message
+  that shows the accepted form, which on the evidence would close it on its
+  own, and notes that the author-side mitigations do not work: `minLength: 1`
+  is satisfied by `"none"`, and a description forbidding `"none"` by name was
+  ignored twice in those words.
 
 **Second instance, 24 arms in, and it narrows the cause.** `AAPL/2026-04-27`
 died the same way at the RESEARCH MANAGER, six sessions in:
@@ -1622,7 +1631,7 @@ consequences:
 
 Rate after 24 arms: 2 lost (~8%).
 
-### `TOOL_BUDGET_S` is 45s and the daemon gives a client tool 30s (2026-10-11)
+### `TOOL_BUDGET_S` is 45s and the daemon gives a client tool 30s (2026-10-11, jaato#1625)
 
 `AAPL/2026-05-18` died at the news analyst with every one of its tools
 reporting, verbatim to the model:
@@ -1657,9 +1666,12 @@ this one is not in it — not in the shipped snapshot and not when a running
 daemon is asked with `--connect`. Nor does `explain env` expose a knob for
 it: the only timeouts there are `JAATO_EPHEMERAL_TIMEOUT_S`,
 `JAATO_RUNNER_ACK_TIMEOUT`, `JAATO_CREDENTIAL_LOCK_TIMEOUT`,
-`JAATO_CLARIFICATION_TIMEOUT` and `JAATO_PERMISSION_TIMEOUT`. Worth filing:
-a driver cannot size its own handler budget against a limit the framework
-does not state, and introspection is supposed to be the source of truth.
+`JAATO_CLARIFICATION_TIMEOUT` and `JAATO_PERMISSION_TIMEOUT`. Filed as **jaato#1625**: a driver cannot size its own handler budget
+against a limit the framework does not state, and introspection is supposed
+to be the source of truth. The issue asks for three things in order — put the
+clock in the `explain clients` table, expose it like the other per-concern
+clocks, and ideally return it from the handshake that accepts `client_tools=`
+so a client derives its deadline instead of guessing.
 
 **What stalled THIS arm is not established.** Lowering the budget would have
 produced six of our own sentences at 25s rather than six transport errors at

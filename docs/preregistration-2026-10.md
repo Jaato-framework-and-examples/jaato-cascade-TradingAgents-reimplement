@@ -566,3 +566,50 @@ applies to.
 an external vendor outage is a §7 exclusion is the open question above, now
 with a concrete instance. The two arms lost to the empty-array trap are a
 separate case with a separate cause.
+
+### 2026-10-11, 14:20 — the framework moved: the sample now spans two builds
+
+The jaato checkout was pulled and the shared daemon restarted, by operator
+decision, while nothing was running.
+
+| | |
+|---|---|
+| build the 33 settled arms ran on | `9315a75d` (jaato-sdk 0.30.0, jaato-server 1.3.0) |
+| build everything after this runs on | `b120c2ce` (same two version strings) |
+
+**The version strings did not change**, so nothing in `pip`, `jaato-doctor`
+or a session record distinguishes these two builds. Only the commit does,
+which is why it is written down here: a reader comparing arms across this
+line has no other way to know the framework moved under them. The changed
+paths were the MCP plugin and remote transport, the template plugin,
+`jaato_server/server/runner/rpc.py`, and the `explain` snapshot.
+
+**Checked after the restart, before anything was run:**
+
+- socket bound 2 s after launch (`--daemon` returns before it binds —
+  CLAUDE.md trap #2, so this is polled, not assumed);
+- `jaato-doctor`: 1 fail, 8 warn, 24 checks — identical to the pre-restart
+  baseline, the fail being the `import jaato_server` autostart check that
+  does not apply at `auto_start=False`;
+- `jaato-scaffold validate` on all three sets, read by `tier` rather than by
+  exit code: openrouter_sonnet 3 warn, minimax_m3 3 warn, echo 2 warn +
+  13 info, **zero workspace-tier errors** — the documented baseline exactly;
+- the client/daemon pairing checked **by hand**, because no doctor check can
+  (jaato#1610, still unfixed in this build — it reports PASS while printing
+  our path as the daemon's): client SDK 0.30.0rc6 against the daemon's
+  editable `b120c2ce` checkout;
+- the end-to-end tier re-run against the restarted daemon.
+
+**Two findings survive the pull unchanged**, which matters because both were
+reasons to want a newer build: the client-tool execution timeout that
+discarded five arms is still absent from `jaato-scaffold explain clients` —
+whose table is introduced as "every clock between connect and a turn's
+terminus" — and `explain env` still exposes no knob for it.
+
+**A consequence worth stating plainly.** Pulling rather than freezing a
+snapshot means the daemon's build tracks a moving branch, so the next pull
+moves it again. If the 33 settled arms are kept, the 564-cell sample spans
+`9315a75d` and `b120c2ce`, and AAPL is the only ticker with cells on the
+older one — a framework change sitting on top of a factor. If those arms are
+voided and re-run, the whole sample is on one build. That is an argument
+about which voiding decision to take, not a reason to undo this one.
