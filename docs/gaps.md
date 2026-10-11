@@ -1500,6 +1500,98 @@ batch measures the rate, which is the number that would justify a
 model-facing change. Either way it was right NOT to edit the personas at the
 same time as fixing the bug — doing both would have made this unmeasurable.
 
+**Narrowed the same day, by a failure with the same symptom and a different
+cause.** The hypothesis above holds for the fundamentals analyst — 17 arms in,
+every one of its reports carries `errors: []`. But `AAPL/2026-02-23` died of
+`DriverStoppedShort` with `errors: ['no-error-placeholder']`, from the
+PORTFOLIO MANAGER, which had nothing to report and no broken tool. See the
+next finding: the disease there is the protocol, not the sentence.
+
+### A required array that is normally empty is a trap in field-by-field completion (2026-10-11)
+
+`AAPL/2026-02-23` completed every stage — three analyst reports, both
+debates, the research plan, the trader proposal — and then was discarded with
+a valid `Hold` sitting in the payload, because `errors` arrived as
+`['no-error-placeholder']` and `pipeline._require` treats a non-empty
+`errors[]` as `StageFailed`.
+
+**What actually happened**, from the session's own history (`.jaato/sessions/`,
+the `function_call` parts; note they are flat with a `type` discriminator —
+`{"type": "function_call", "name": …, "args": …}` — not nested under a
+`function_call` key, which cost one wrong reading first):
+
+| turn | call |
+|---|---|
+| 1 | `prepare_completion("errors", "[]")` — the STRING `"[]"`, not an empty array |
+| 5 | `prepare_completion("errors", "")` |
+| 7 | `prepare_completion("errors", "[]")` |
+| 11 | `prepare_completion("errors[0]", "no-error-placeholder")` |
+| 13 | `prepare_completion("errors", "")` |
+| 15 | `prepare_completion("errors[0]", "no-error-placeholder")` |
+| 17 | `signal_completion()` — arg-less, the framework synthesizing from accumulated state |
+
+Eight turns spent trying to say "there are no errors". `explain plugin
+lifecycle` is explicit that `prepare_completion`'s `value` takes whatever the
+schema expects for that path, arrays included, so an empty array IS
+expressible and the framework was right to reject each attempt. The model
+could not produce one. What it eventually found was that indexing `errors[0]`
+is accepted — and an array with an element is not empty.
+
+**It is the protocol shape, not the agent.** Across the first 17 arms
+(~110 sessions) M3 completes ONE-SHOT almost always — 16 to 19 sessions per
+agent — and one-shot gets `errors: []` right every single time. Field-by-field
+occurred 7 times, and all 7 flailed the same way:
+
+| cell / agent | sequence | outcome |
+|---|---|---|
+| 2026-01-05 news | `"[]"` → `errors[0]=""` → one-shot `[]` | recovered |
+| 2026-01-12 news | `"[]"` → `errors[0]=""` → one-shot `[]` | recovered |
+| 2026-02-02 fundamentals | `"[]"` → `errors[0]="__PLACEHOLDER__"` → `""` → one-shot `[]` | recovered |
+| 2026-02-23 fundamentals | `"[]"` → `""` → `errors[0]=""` → one-shot `[]` | recovered |
+| 2026-03-02 fundamentals | `"[]"` → `""` → one-shot `[]` | recovered |
+| 2025-12-15 research manager | `"[]"` → `["none"]` → `""` → `errors[0]=""` → … | recovered |
+| **2026-02-23 portfolio manager** | `"[]"` → `""` → `"[]"` → `errors[0]="no-error-placeholder"` | **arm lost** |
+
+Six recovered by abandoning field-by-field for one-shot. The seventh satisfied
+`is_complete` with a token instead, and `signal_completion()` fired on a
+payload whose `errors` field said, in words, that it was a placeholder.
+
+This is the `prose_tool_calls` quirk that `explain provider minimax` names and
+does not describe, and that `.jaato/profiles/minimax_m3/` records as
+unmeasured here. It is now measured: it does not garble prose, it sends a
+JSON-ish STRING where a typed value is expected, and the only field in these
+five schemas where that is fatal is an array whose correct value is empty.
+
+**`minLength: 1` neither caused nor fixed it.** Without the constraint the
+same path lands on `errors[0] = ""`, i.e. `[""]`, which is non-empty and kills
+the stage identically — that is precisely the second batch's signature. The
+constraint changed the token, not the outcome.
+
+**Cost, and what it is not.** One arm of 17 (~6%). A `DriverStoppedShort` arm
+is recorded `FAIL`, not `BLOCKED`, so it spends none of §7's 57 permitted
+exclusions, yet it yields no rating and so contributes nothing to §4 — the
+sample shrinks silently. At this rate ~33 of 564 cells would vanish without
+moving the kill switch. Whether a pipeline failure should count against §7 is
+a registration question, recorded in the preregistration rather than decided
+here.
+
+**Not fixed while the batch runs**, so that all 47 arms run one pipeline. Two
+changes are proposed for the batch boundary:
+
+- **Drop `errors` and `warnings` from `required` in the five schemas.**
+  `pending_required_fields` then never asks for them, `is_complete` goes true
+  without the model touching them, and absence means no error. `_require`
+  already reads `payload.get("errors") or []`, so **the driver needs no
+  change** — it handles absence today. The cost is the strict-shape
+  convention (`additionalProperties: false` plus exhaustive `required`) that
+  every schema here follows.
+- **File it in jaato.** Eight turns of rejection never taught the model the
+  accepted shape, and the quirk doing the damage is one the provider profile
+  already declares. The trap is generic to any schema with a normally-empty
+  required array, which makes it the framework's to carry rather than this
+  driver's.
+
+
 **A better way to stop a sweep, learned here.** `SIGINT` to the `jaato-eval`
 parent recorded three arms and **zero BLOCKED** — the two in flight were
 simply not written, so `--resume` re-runs them. `pkill` on the driver
