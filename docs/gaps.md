@@ -1622,6 +1622,72 @@ consequences:
 
 Rate after 24 arms: 2 lost (~8%).
 
+### `TOOL_BUDGET_S` is 45s and the daemon gives a client tool 30s (2026-10-11)
+
+`AAPL/2026-05-18` died at the news analyst with every one of its tools
+reporting, verbatim to the model:
+
+```
+{"error": "Client tool get_company_news timed out after 30.0s"}
+```
+
+Six calls, `get_company_news`, `get_global_news`, `get_insider_transactions`
+and `get_macro_series` ×3. `turn_accounting` shows all six **started within 27
+milliseconds** of each other (13:38:17.4887 → .5150) and all six cut at
+30.05s, so dispatch is parallel and the clock is one the DAEMON keeps.
+
+**`tools.py` sets `TOOL_BUDGET_S = 45.0`.** It is larger than the daemon's
+budget, so for any handler taking between 30 and 45 seconds our deadline is
+dead code: the daemon answers first and the model receives a raw transport
+error instead of
+
+```
+DATA_UNAVAILABLE: <tool> did not answer within 45s. Do not estimate or invent these values.
+```
+
+That sentence is the data layer's whole contract (§7 of CLAUDE.md) — the
+instruction not to invent travels WITH the failure, and the three kinds of
+nothing stay distinguishable. A `{"error": …}` object carries none of it.
+The fix is to put `TOOL_BUDGET_S` below the daemon's budget so ours fires
+first; it is **not** applied mid-batch, so that all 47 arms run one pipeline.
+
+**The clock is undocumented.** `jaato-scaffold explain clients` prints a
+table introduced as "every clock between connect and a turn's terminus", and
+this one is not in it — not in the shipped snapshot and not when a running
+daemon is asked with `--connect`. Nor does `explain env` expose a knob for
+it: the only timeouts there are `JAATO_EPHEMERAL_TIMEOUT_S`,
+`JAATO_RUNNER_ACK_TIMEOUT`, `JAATO_CREDENTIAL_LOCK_TIMEOUT`,
+`JAATO_CLARIFICATION_TIMEOUT` and `JAATO_PERMISSION_TIMEOUT`. Worth filing:
+a driver cannot size its own handler budget against a limit the framework
+does not state, and introspection is supposed to be the source of truth.
+
+**What stalled THIS arm is not established.** Lowering the budget would have
+produced six of our own sentences at 25s rather than six transport errors at
+30s; it would not have made the tools answer. Candidates and their standing:
+
+- *Host starvation of one driver process.* Fits that exactly one arm of 26
+  was hit while its concurrent neighbour was fine, and the box carries 2 GB
+  of swap in use. But there is **no load measurement from 13:38**, so this
+  is a hypothesis, not a finding.
+- *`pass`/`gpg-agent` contention.* Every one of the six tools needs a
+  pass-store credential, and the `market_analyst` session that succeeded 60
+  seconds earlier uses only yfinance tools, which need none — a striking
+  correlation, and `functools.lru_cache` does not deduplicate IN-FLIGHT
+  calls, so six cold concurrent lookups do spawn six `pass` subprocesses.
+  **But it does not survive the retries:** `_pass_secret` has
+  `timeout=10` and caches its `None`, so a stuck `pass` would make later
+  calls return instantly rather than time out again at 30s, and every retry
+  across 3.5 minutes timed out. Recorded as refuted on present evidence.
+
+What would settle it: sampling load and per-process state during a sweep, or
+logging the handler's own elapsed time inside `with_deadline` so the driver's
+view and the daemon's can be compared directly. Neither exists yet.
+
+**Three pipeline failures in 26 arms (~11.5%), three causes** — two of them
+the empty-array trap above (portfolio manager, research manager) and this
+one. The arms are recorded `FAIL`, so none spends a §7 exclusion; see the
+preregistration's open question of 2026-10-11.
+
 
 **A better way to stop a sweep, learned here.** `SIGINT` to the `jaato-eval`
 parent recorded three arms and **zero BLOCKED** — the two in flight were
