@@ -613,3 +613,75 @@ moves it again. If the 33 settled arms are kept, the 564-cell sample spans
 older one — a framework change sitting on top of a factor. If those arms are
 voided and re-run, the whole sample is on one build. That is an argument
 about which voiding decision to take, not a reason to undo this one.
+### 2026-10-11, 17:51 — the framework moved again: `b120c2ce` -> `aeee87f2`
+
+Pulled and restarted by operator decision, with nothing running: no
+`jaato-eval`, no cascade, **zero peers** on `/tmp/jaato.sock`, and only idle
+`--template-mode` runners on the old daemon.
+
+| | |
+|---|---|
+| build the 33 settled arms ran on | `9315a75d` |
+| build the 14:20 restart moved to | `b120c2ce` (nothing ran under it) |
+| build everything after this runs on | `aeee87f2` |
+
+All three declare **the same two version strings** (jaato-sdk 0.30.0,
+jaato-server 1.3.0), so again only the commit distinguishes them
+(jaato#1610).
+
+Six commits. The changed paths were the `template` plugin's required-input
+inference (jaato#1623, #1627, #1628), the `mcp` plugin plus a new
+`schema_compat` module (#1629, #1631), and one hunk in
+`jaato_server/server/runner/rpc.py` that resolves wire tool ids back to tool
+names inside an error string (#1631). **No packaging metadata changed**, so
+the daemon venv's editable installs were not reinstalled; both packages were
+re-checked to resolve from the checkout afterwards.
+
+Neither of those plugins is in any profile's `plugins:` here — this workspace
+declares `references` and `file_edit` and nothing else — so the expectation
+was no behavioural change for this pipeline. The checks below are what tested
+that rather than assumed it.
+
+**Checked after the restart, before anything was run:**
+
+- the pull was `--ff-only` from a clean checkout, so the tree is exactly
+  `origin/main` and no local work was carried into it;
+- the socket bound 1 s after launch, polled rather than assumed (CLAUDE.md
+  trap #2), and exactly one daemon runs: the pid in `/tmp/jaato.pid` is the
+  only `jaato_server --daemon` process;
+- `jaato-doctor`: 1 fail, 8 warn, 24 checks — the same shape as the
+  pre-restart baseline, the fail being the `import jaato_server` autostart
+  check that does not apply at `auto_start=False`;
+- `jaato-scaffold validate` on all three sets, read by `tier` rather than by
+  exit code: openrouter_sonnet 3 warn, minimax_m3 3 warn, echo 2 warn +
+  13 info, **zero workspace-tier errors** — the documented baseline, so the
+  template plugin's changed required-input inference moved none of it.
+  `validate` prints `[validated by the daemon at /tmp/jaato.sock
+  (jaato-server 1.3.0)]`, which is what makes these the NEW build's findings
+  and not this venv's;
+- the client/daemon pairing **by hand**, since no doctor check can
+  (jaato#1610, unfixed in this build too): client SDK 0.30.0rc6 (published)
+  against the daemon's editable `aeee87f2` checkout;
+- the end-to-end tier: **3 passed in 293.88 s** against the restarted daemon, plus the unit tier at 138 passed.
+
+**Both gaps filed this afternoon survive this pull**, re-measured against the
+running daemon rather than the shipped snapshot:
+
+- **jaato#1625** — `explain clients --connect` still lists six clocks under
+  "TIMEOUTS — every clock between connect and a turn's terminus", and the
+  client-tool execution timeout is not among them; `explain env` still exposes
+  the same five `JAATO_*TIMEOUT*` knobs, none of them it.
+- **jaato#1626** — the diff between the two builds touches no completion path
+  at all (a `git diff --stat` restricted to `*completion*` and `*client_tool*`
+  comes back empty), so `prepare_completion`'s rejection text is unchanged and
+  the empty-array trap stands as filed.
+
+So `TOOL_BUDGET_S` is still the queued one-line fix, and the two arms lost to
+the empty-array trap would be lost the same way on this build.
+
+**The sample still spans two builds**, not three, if the 33 settled arms are
+kept: AAPL's settled cells on `9315a75d` and everything from here on
+`aeee87f2`, with nothing at all on `b120c2ce` — it was the daemon's build for
+three and a half hours in which no arm ran. That the middle build carries no
+arms is luck rather than design; it keeps the open question exactly as narrow
+as it was — whether those 33 arms are voided — without answering it.
