@@ -1631,6 +1631,32 @@ consequences:
 
 Rate after 24 arms: 2 lost (~8%).
 
+**FIXED upstream (2026-10-14, jaato `513f937b`, issue closed 2026-10-13).**
+Present from jaato `976c3773`, the build this workspace's daemon now runs.
+Four changes, all four of what would have closed it:
+
+- `"[]"` on an array path is converted to `[]` (the #1358 coercion rule
+  applied to the leaf schema), so the shape the model kept sending is now the
+  shape that works. `""` is still refused, correctly.
+- a rejection on an array or object path **names the accepted shape**
+  (`value=[] for none`) — the one ask that, on this repository's evidence,
+  would have closed it alone.
+- every pending array field that may be empty (no positive `minItems`) carries
+  `set_empty_with` — the literal call,
+  `prepare_completion(field_path='errors', value=[])` — in every
+  `prepare_completion` and `query_completion` answer, so the accepted form is
+  in front of the model on every turn rather than discoverable by luck.
+- the tool and value-parameter descriptions name the empty array.
+
+**So the queued schema change is retired.** Our five schemas declare no
+`minItems` — the `minLength: 1` added on 10-11 sits on the ITEMS, not the
+array — so `set_empty_with` reaches `errors`, `warnings` and `tools_used` with
+the schemas exactly as committed. Dropping `errors`/`warnings` from `required`
+is no longer needed to make an empty array reachable, and the strict-shape
+convention is kept. What remains is to confirm it on the first live arms: the
+observable is a completion that sets `errors=[]` directly instead of the
+`errors[0]=<placeholder>` this entry was written about.
+
 ### `TOOL_BUDGET_S` is 45s and the daemon gives a client tool 30s (2026-10-11, jaato#1625)
 
 `AAPL/2026-05-18` died at the news analyst with every one of its tools
@@ -1672,6 +1698,34 @@ to be the source of truth. The issue asks for three things in order — put the
 clock in the `explain clients` table, expose it like the other per-concern
 clocks, and ideally return it from the handshake that accepts `client_tools=`
 so a client derives its deadline instead of guessing.
+
+**FIXED upstream (2026-10-14, jaato `991be687`, issue closed 2026-10-14).**
+Present from jaato `976c3773`. `explain clients` now carries the row:
+
+```
+30s   client_tools=[{'timeout': <ms>}] per tool        both
+      ONE host-tool call, daemon-side (the spec value is in ms)
+      on expiry: the MODEL gets {"error": "Client tool <name> timed out after <N>s"}
+```
+
+and states the rule this entry had to derive from a dead arm — *"A host tool's
+handler that applies its own deadline (to return an answer the model can read)
+must fire BEFORE the daemon's"* — and the handshake now reports the budget:
+`register_client_tools()` returns `{name: seconds}` per tool and keeps it on
+`client.client_tool_timeouts` (protocol 1.39+). All three asks, in the order
+they were asked.
+
+**The two halves cost differently here, measured in the installed SDK rather
+than assumed.** SETTING the budget needs no SDK move: 0.30.0rc6's
+`register_client_tools` already documents an optional `timeout` in ms and
+forwards every spec key except `handler`, so a `timeout` on each spec in
+`tools.py` reaches the daemon today. READING it does need one: rc6 returns
+`None` and carries no `client_tool_timeouts`; `jaato-doctor`'s
+`package releases` check names 0.30.0rc16 on TestPyPI. So the fix for
+`TOOL_BUDGET_S` is now a choice between making our number the daemon's number
+(one spec key, no SDK move) and deriving ours from the daemon's (no hardcoded
+number anywhere, but the client SDK moves first) — not the blind lowering this
+entry originally proposed.
 
 **What stalled THIS arm is not established.** Lowering the budget would have
 produced six of our own sentences at 25s rather than six transport errors at

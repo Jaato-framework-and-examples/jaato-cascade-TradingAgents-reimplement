@@ -685,3 +685,94 @@ kept: AAPL's settled cells on `9315a75d` and everything from here on
 three and a half hours in which no arm ran. That the middle build carries no
 arms is luck rather than design; it keeps the open question exactly as narrow
 as it was — whether those 33 arms are voided — without answering it.
+### 2026-10-14, 22:50 — the framework moved to `976c3773`, and both filed gaps are fixed in it
+
+Pulled and restarted by operator decision, with nothing running: no
+`jaato-eval`, no cascade, zero peers on `/tmp/jaato.sock`.
+
+**What the restart actually ended was a live skew.** The daemon PROCESS had
+run since 2026-10-11 17:48 on `aeee87f2`, but the checkout moved under it
+three times in between — `ac8483d9` (10-12 21:53), `1d32e877` (10-13 00:24),
+`bac5e3d8` (10-14 13:44), all by someone else — and the daemon venv holds
+`jaato-sdk` and `jaato-server` as **editable** installs. So every runner
+spawned after the first of those pulls imported code the daemon process
+itself had never loaded, while `pip`, the version strings and every session
+record said nothing about it. A restart after someone else pulls is therefore
+not housekeeping; it is what makes the daemon and its runners one build again.
+Eighty commits separate `aeee87f2` from the new `976c3773`.
+
+**Packaging metadata changed this time**, unlike the two 10-11 moves, so the
+pull alone would have left the venv incoherent: jaato-sdk's `pyproject.toml`
+moved both console scripts onto a new top-level `jaato_tool_launch` module
+(jaato#1643) and declared it under `[tool.setuptools] py-modules`. The
+staleness was measured, not assumed — `bin/jaato-doctor` still read
+`from jaato_sdk.doctor import main`, and `import jaato_tool_launch` raised
+`ModuleNotFoundError`, because the editable finder was generated before the
+module existed. The editable jaato-sdk was reinstalled with
+`--no-deps --no-build-isolation --no-index`, so nothing could be substituted
+off an index: `pip freeze` is identical at 224 lines before and after, the
+launcher now resolves, and both scripts repoint. jaato-server's metadata did
+not change in this range and it was left alone.
+
+Two operational notes from the stop, both new: `--stop` reported *"Reaped 3
+orphan runner processes left behind by killed mid-cascade sessions"* — those
+were the three idle `--template-mode` runners, so the wording overstates what
+had happened — and it left a **stale pid file** behind (pid 1193837, verified
+dead) where the 10-11 stop had removed it. It was removed by hand before
+starting, after checking the pid was not alive.
+
+**Checked after the restart, before anything was run:**
+
+- the socket bound 5 s after launch, polled rather than assumed, and exactly
+  one daemon runs: the pid in `/tmp/jaato.pid` is the only `--daemon` process;
+- `jaato-doctor`: 1 fail, 8 warn, 24 checks — the documented shape;
+- `jaato-scaffold validate` on all three sets, read by `tier`:
+  openrouter_sonnet 3 warn, minimax_m3 3 warn, echo 2 warn + 13 info,
+  **zero workspace-tier errors** — the baseline, which also means jaato#1686
+  ("profiles pin an ABI", landed in this range) raises nothing against our 13
+  stage profiles;
+- the client/daemon pairing by hand (jaato#1610): client SDK 0.30.0rc6
+  published, daemon editable at `976c3773`;
+- unit tier 138 passed; end-to-end tier: **3 passed in 272.42 s** against the restarted daemon;
+- the daemon log since the restart carries only the known observer-disconnect
+  pair (CLAUDE.md trap #6), from the `validate` and `explain` delegations.
+
+#### Both gaps filed on 10-11 are fixed, closed, and in this build
+
+**jaato#1625** (closed 2026-10-14 06:08, `991be687`). `explain clients` now
+carries the row this repository could not find:
+
+    30s   client_tools=[{'timeout': <ms>}] per tool        both
+          ONE host-tool call, daemon-side (the spec value is in ms)
+
+and states the rule plainly — *"A host tool's handler that applies its own
+deadline (to return an answer the model can read) must fire BEFORE the
+daemon's"* — plus the reporting ask: `register_client_tools()` returns
+`{name: seconds}` per tool and keeps it on `client.client_tool_timeouts`
+(protocol 1.39+). Two halves with different costs for us, measured in the
+installed SDK rather than inferred: **setting** the budget needs no SDK move,
+because rc6's `register_client_tools` already documents an optional `timeout`
+in ms and forwards every spec key except `handler`; **reading** it does,
+because rc6 returns `None` and carries no `client_tool_timeouts`.
+`jaato-doctor`'s `package releases` check names 0.30.0rc16 on TestPyPI.
+
+**jaato#1626** (closed 2026-10-13 19:22, `513f937b`). All four things that
+would close it: `"[]"` on an array path is now coerced to `[]` by the #1358
+rule (`""` is still refused), a rejection on an array or object path names the
+accepted shape, the tool and value-parameter descriptions name the empty
+array, and every pending array field with no positive `minItems` carries
+`set_empty_with` — the literal call,
+`prepare_completion(field_path='errors', value=[])` — in every
+`prepare_completion` and `query_completion` answer. Our five schemas declare
+no `minItems` (the `minLength: 1` added on 10-11 sits on the ITEMS, not the
+array), so the hint reaches `errors`, `warnings` and `tools_used` with the
+schemas exactly as committed. **The queued schema change — dropping
+`errors`/`warnings` from `required` — is therefore no longer needed to make
+an empty array reachable**, and the two arms lost to that trap would not be
+lost on this build.
+
+**What this does to the open voiding question.** It does not answer it, but it
+sharpens the stakes: the 33 settled AAPL arms ran on `9315a75d`, a build
+carrying both defects, and a re-run would run on one carrying neither. Seven
+of those 33 arms died of exactly these two causes — 2 of the empty-array trap,
+5 of the 30 s clock during the Finnhub outage.
