@@ -62,11 +62,27 @@ build to the daemon's and makes them move together, which is the opposite of
 what a shared daemon is for.
 
 ```bash
-python -m venv .venv
+# Python 3.14 — the framework declares ">=3.14,<3.15" and the SDK carries the
+# same pin, so a 3.12 venv cannot install the current rc. There is no system
+# python3.14 on this host; `uv python install 3.14` provides one.
+~/.local/bin/python3.14 -m venv .venv
 # The SDK and jaato-eval are both PUBLISHED packages. On a release both come
 # from PyPI; this venv currently tracks release candidates, which live on
 # TestPyPI, so the two index flags are needed and `--pre` is what allows an rc.
 # Pass BOTH indexes: TestPyPI alone cannot resolve pandas/yfinance/starlette.
+#
+# ON A FRESH VENV, CONSTRAIN IT. `--pre` is global: it licenses a pre-release
+# for EVERY package, and with TestPyPI as the primary index pip then prefers
+# whatever is newest there. Run bare into an empty venv on 2026-10-17 it
+# installed pandas 3.1.0rc0, lxml 7.0.0b1, urllib3 2.8.1.dev23, protobuf
+# 7.37.0rc1 and curl_cffi 0.16.4b1 — a backtest must not quietly run on a
+# pandas release candidate. pip has no per-package `--pre`, so pass a
+# constraints file built from the last known-good `pip freeze` (minus the two
+# lines you intend to move) and the drift is nil:
+#   grep -E '^[A-Za-z0-9_.-]+==' freeze.txt | grep -v '^ta.cascade==' > pins.txt
+#   PIP_CONSTRAINT=pins.txt .venv/bin/pip install -e ".[dev,board,sweep]" --pre ...
+# Then diff the freeze anyway. The absence of a complaint from pip is not the
+# same evidence.
 .venv/bin/pip install -e ".[dev,board,sweep]" --pre \
     --index-url https://test.pypi.org/simple/ \
     --extra-index-url https://pypi.org/simple/
@@ -97,18 +113,19 @@ absence of a complaint from pip is not the same evidence.
   `import jaato_server … required for autostart`. It does not apply here —
   `RunConfig.auto_start=False` against a shared daemon never starts one — and
   the `jaato_server checkout` skew check degrades to a WARN for the same
-  reason. The tally to expect is **1 fail, 9 warn, 24 checks**
-  (2026-10-17). It was 8 warn on 10-14, when `package releases` went quiet as
-  the venv came current and `jaato_sdk checkout` arrived as a WARN (see #1610
-  below); `package releases` is back because rc21/rc22 are published — and
-  uninstallable here, see the Python 3.14 bullet. Compare the LINES, not the
-  number. Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
-  2026-10-09 on 0.30.0rc6 (TestPyPI), and again 2026-10-14 on 0.30.0rc16,
-  which is the first published build whose `register_client_tools` reports the
-  daemon's per-tool budgets (jaato#1625): **147 unit tests and the end-to-end
-  tier both pass** from a venv holding only the SDK, against a daemon running
-  from an entirely different environment — and, since 2026-10-17, one holding
-  no package of this repository at all. A tier that fails on a loaded host is
+  reason. The tally to expect is **1 fail, 8 warn, 24 checks**
+  (2026-10-17, on 3.14 with SDK 0.30.0rc22). It went to 9 warn earlier that day
+  when `package releases` reported an rc this venv could not install, and back
+  to 8 — PASS, "nothing newer is published" — once the venv moved to 3.14 and
+  took rc22. Compare the LINES, not the number: `jaato_sdk checkout` and
+  `jaato_server checkout` are WARNs here by construction (see #1610 below). Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
+  2026-10-09 on 0.30.0rc6 (TestPyPI), 2026-10-14 on 0.30.0rc16 — the
+  first published build whose `register_client_tools` reports the daemon's
+  per-tool budgets (jaato#1625) — and 2026-10-17 on **0.30.0rc22 under Python
+  3.14.2**, which is what this venv now holds: **147 unit tests and the
+  end-to-end tier both pass** (3 passed in 274.87 s) from a venv holding only
+  the SDK, against a daemon running from an entirely different environment —
+  and, since 2026-10-17, one holding no package of this repository at all. A tier that fails on a loaded host is
   not a regression: see `docs/gaps.md`, 2026-10-14, on what swap exhaustion
   does to `session.new`. Moving the client's SDK is a deliberate
   step, not a consequence of pulling jaato: the daemon's venv is reinstalled
@@ -117,33 +134,26 @@ absence of a complaint from pip is not the same evidence.
   says a newer one exists, and after moving, re-run
   `jaato-scaffold integration claude-code --force` — the skill ships with the
   SDK and doctor reports the copy stale by version.
-- **The daemon runs Python 3.14; this venv is still 3.12, and that is fine**
-  (jaato#1076, commit `85424765`, pulled 2026-10-17). Every framework
-  `pyproject.toml` declares `requires-python = ">=3.14,<3.15"`, an exact pin —
-  3.15 is excluded by declaration too. On 2026-10-17 the operator moved the
-  daemon venv to **Python 3.14.2**, from `uv`'s own standalone build
+- **Both sides run Python 3.14 as of 2026-10-17** (jaato#1076, commit
+  `85424765`): every framework `pyproject.toml`, and the published SDK, declare
+  `requires-python = ">=3.14,<3.15"` — an exact pin, so 3.15 is excluded by
+  declaration too. The daemon venv moved to **3.14.2** and this venv followed
+  the same day, both from `uv`'s standalone build
   (`~/.local/share/uv/python/cpython-3.14.2-linux-x86_64-gnu`, symlinked at
-  `~/.local/bin/python3.14`); there is still no system `python3.14`, and
-  `/usr/bin/python3.12` (3.12.3) is what a bare `python3` gives you.
-  **A 3.12 client against a 3.14 daemon is MEASURED to work**, not assumed:
-  `validate` delegates fine, and the end-to-end tier passes (3 passed in
-  296.14 s, 2026-10-17). It has to work — the two sides share a wire protocol,
-  not an interpreter, which is the whole point of the split in §2. **So do not
-  "fix" this venv's version because the daemon's moved.**
-  What the pin DOES bind here is the published SDK: it carries the same
-  `>=3.14,<3.15`, so **this 3.12 venv cannot install 0.30.0rc21 or later** —
-  `pip` answers *"Ignored the following versions that require a different
-  python version: 0.30.0rc21 Requires-Python >=3.14,<3.15"*, and **0.30.0rc20
-  is the newest SDK it can hold** (rc16 is installed). `jaato-doctor`'s
-  `package releases` WARN reports a newer rc and prints an install command that
-  cannot succeed; read it as "the client venv would have to move to 3.14
-  first", not as "run this". Moving it is a deliberate step and the interpreter
-  is now available to do it — `uv venv --python 3.14` and the §2 install line.
-  `--ignore-requires-python` only defers the moment the code genuinely needs
-  3.14, so it is not the fix. The ecosystem is not an obstacle: a wheels-only
-  `uv` resolution for 3.14 succeeds for the daemon's declared core and for the
-  heavy tenant extras (numpy, scipy, onnxruntime, tokenizers, presidio,
-  grpcio). See `docs/gaps.md`, 2026-10-17.
+  `~/.local/bin/python3.14`). There is still no system `python3.14`;
+  `/usr/bin/python3.12` (3.12.3) is what a bare `python3` gives you, so a venv
+  made without naming the interpreter is the wrong one.
+  **They do not have to match.** Before this venv moved, a 3.12 client was
+  measured driving the 3.14 daemon — `validate` delegating correctly and the
+  end-to-end tier passing (3 passed in 296.14 s) — because the two sides share
+  a wire protocol, not an interpreter, which is the point of the split in §2.
+  What forced this venv to 3.14 was not the daemon but the PUBLISHED SDK: a
+  3.12 venv is refused 0.30.0rc21 and later (*"Ignored the following versions
+  that require a different python version"*), so rc20 was its ceiling. On 3.14
+  the SDK moved rc16 -> **rc22**, the newest on TestPyPI, and the dependency
+  diff against the 3.12 venv is exactly that one line. `--ignore-requires-python`
+  would only have deferred the moment the code genuinely needs 3.14, so it was
+  never the fix. See `docs/gaps.md`, 2026-10-17.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
   (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
   "client and daemon both resolve jaato_sdk from <path>" while printing OUR

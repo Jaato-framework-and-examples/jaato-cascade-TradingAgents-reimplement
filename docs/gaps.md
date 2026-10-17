@@ -2029,11 +2029,62 @@ Two things were then worth measuring rather than assuming:
   client/daemon split of 2026-10-09 is for — but it is now measured across a
   two-minor-version gap, which it had never been.
 
-**Still open, and narrower than it was:** this client venv is 3.12 and so
-cannot install SDK 0.30.0rc21 or later; rc20 is its ceiling and rc16 is what it
-holds. The interpreter to move it is now on the box, so this is a decision
-rather than a blocker. Doctor's `package releases` WARN will keep reporting a
-newer rc and printing an install command that cannot succeed until then.
+**CLOSED the same day: this venv moved too.** Rebuilt on **Python 3.14.2**
+from the same `uv` build, and the SDK taken to **0.30.0rc22**, the newest on
+TestPyPI. Verified: 147 unit tests; `validate` at baseline on all three sets;
+doctor back to **1 fail, 8 warn, 24 checks** with `package releases` PASSing
+("nothing newer is published") and the claude-code skill refreshed to rc22; the
+end-to-end tier **3 passed in 274.87 s**. The dependency diff against the 3.12
+venv is **exactly one line** — `jaato-sdk==0.30.0rc16` -> `0.30.0rc22` — which
+is the point of the next finding.
+
+What forced the move was the published SDK, not the daemon: a 3.12 venv is
+refused rc21 and later, so rc20 was its ceiling. The daemon's own interpreter
+never required it, as the 296.14 s measurement above shows.
+
+### `--pre` is global, and on a fresh venv it substitutes pre-releases wholesale (2026-10-17)
+
+Found while moving this venv to 3.14. CLAUDE.md §2's documented install —
+`pip install -e ".[dev,board,sweep]" --pre --index-url
+https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/` — is
+correct for the two packages it exists for, and quietly wrong for everything
+else when the venv is EMPTY. `--pre` is not per-package: it licenses a
+pre-release for every requirement, and with TestPyPI as the PRIMARY index pip
+prefers whatever is newest there. Run bare into the new 3.14 venv it installed:
+
+```
+pandas==3.1.0rc0        (3.0.6 on the old venv)
+lxml==7.0.0b1           (6.1.3)
+urllib3==2.8.1.dev23    (2.8.0)
+protobuf==7.37.0rc1     (7.36.2)
+curl_cffi==0.16.4b1     (0.16.3)
+```
+
+plus a dozen stable-but-moved lines. A backtest arm must not quietly run on a
+pandas release candidate, and nothing in the install output says it is doing
+so — the drift is only visible in a freeze diff.
+
+**Why it had not bitten before.** On 2026-10-09 the same command moved exactly
+one line, because it ran against an already-populated venv whose installed
+versions already satisfied every requirement, so pip had nothing to choose.
+The hazard is specific to a fresh venv, which is precisely what an interpreter
+move creates. The existing warning in §2 ("take a `pip freeze` before and
+after and diff it") is what caught it; it was right and it was not enough.
+
+**The fix, and it is deterministic rather than defensive.** pip has no
+per-package `--pre`, so constrain the rest explicitly from the last known-good
+freeze:
+
+```
+grep -E '^[A-Za-z0-9_.-]+==' freeze-before.txt | grep -v '^ta.cascade==' > pins.txt
+PIP_CONSTRAINT=pins.txt .venv/bin/pip install -e ".[dev,board,sweep]" --pre ...
+```
+
+Every one of the 51 pins from the 3.12 venv resolved **wheels-only** on 3.14
+(checked with `uv pip compile --python-version 3.14 --only-binary :all:`
+BEFORE the venv was touched), so the move needed no dependency drift at all —
+and then moving the SDK alone, with the same pins minus its line, left the
+one-line diff above. Recipe now in CLAUDE.md §2.
 
 **One casualty to be aware of, not ours to fix:** `jaato-tg.service` (the
 telegram bot, a separate tenant) went `inactive (dead)` at 18:20:23 with

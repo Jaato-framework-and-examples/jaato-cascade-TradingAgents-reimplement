@@ -916,3 +916,37 @@ rc20 is its ceiling — so the client's SDK is now pinned by the interpreter
 rather than by choice. The interpreter to move it exists on the box; whether to
 move it before the next batch is an operator decision, and moving it mid-study
 would change the client half of every pairing note.
+
+### 2026-10-17, 19:10 — the driver venv moved to 3.14.2 and the SDK to rc22
+
+The open item from the 18:23 record is closed: this venv was rebuilt on
+**Python 3.14.2** (the same `uv` standalone build the daemon uses) and its SDK
+taken to **0.30.0rc22**, the newest published on TestPyPI. Both halves of every
+future pairing note now read 3.14.2.
+
+**The pairing note for any batch run from here:** driver **Python 3.14.2, SDK
+0.30.0rc22**; daemon **Python 3.14.2, jaato-server 1.3.0** from the checkout at
+`612dfc22`. The 33 settled AAPL arms ran a driver at 3.12.3 with rc6-era SDK
+against a daemon at 3.12 — so an interpreter change now separates them from
+anything run next, on both sides.
+
+**What was deliberately held constant.** The dependency diff against the 3.12
+venv is **one line**, the SDK's. Every other package sits at the version the
+3.12 venv held, because a fresh venv plus `--pre` plus TestPyPI-as-primary
+otherwise installs pre-releases wholesale — pandas 3.1.0rc0, lxml 7.0.0b1,
+urllib3 2.8.1.dev23 among them (`docs/gaps.md`, 2026-10-17). **No arm in this
+study has run on a pandas release candidate**, and the constraint recipe that
+prevents it is now in CLAUDE.md §2. This matters for the study specifically:
+the indicator maths, the snapshot's quoted numbers and the scoring all run
+through pandas, so a silent rc there would be an unrecorded change to the
+measured quantity.
+
+**Verified before this record was written:** 147 unit tests; `validate` at
+baseline on all three sets, zero errors; `jaato-doctor` at 1 fail / 8 warn / 24
+checks, with `package releases` PASSing and the claude-code skill refreshed to
+rc22; end-to-end **3 passed in 274.87 s**, at the fast end of the 272–300 s
+range this tier has held all month.
+
+**Unchanged by this move:** every profile, persona, schema, gate, ceiling and
+data function. An arm's determinism is untouched; what moved is the
+interpreter and the client library underneath it.
