@@ -2086,11 +2086,15 @@ BEFORE the venv was touched), so the move needed no dependency drift at all —
 and then moving the SDK alone, with the same pins minus its line, left the
 one-line diff above. Recipe now in CLAUDE.md §2.
 
-**One casualty to be aware of, not ours to fix:** `jaato-tg.service` (the
-telegram bot, a separate tenant) went `inactive (dead)` at 18:20:23 with
-`status=0/SUCCESS` after 2w 3d of uptime, and `jaato_client_telegram` is no
-longer among the venv's editable installs — so it would need reinstalling into
-the 3.14 venv before that unit can start again.
+**One tenant left the daemon, by decision rather than accident:**
+`jaato-tg.service` (the telegram bot) went `inactive (dead)` at 18:20:23 with
+`status=0/SUCCESS` after 2w 3d of uptime, and `jaato_client_telegram` was not
+reinstalled into the 3.14 venv. The operator stopped it deliberately, so this
+is not pending work. Worth knowing for two reasons: the daemon now serves one
+fewer long-lived client, which changes what else is competing for runner slots
+and memory on this box (see 2026-10-14 above); and the unit is still
+`enabled`, so it will try to start on the next login and fail on the missing
+import until it is disabled or the package is reinstalled.
 
 ## Feature parity with the reference implementation
 
