@@ -29,5 +29,3 @@ plugin_configs:
         errors: []
         warnings:
         - 'echo provider: no data was fetched'
-env:
-  TA_CASCADE_PREFETCH: 'off'

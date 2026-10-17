@@ -19,5 +19,3 @@ plugin_configs:
         strategic_actions: 'echo: accumulate on weakness; revisit after earnings.'
         errors: []
         warnings: []
-env:
-  TA_CASCADE_PREFETCH: 'off'

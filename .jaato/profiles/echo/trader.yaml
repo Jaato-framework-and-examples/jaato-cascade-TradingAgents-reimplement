@@ -31,5 +31,3 @@ plugin_configs:
         position_sizing: 'echo: half size'
         errors: []
         warnings: []
-env:
-  TA_CASCADE_PREFETCH: 'off'

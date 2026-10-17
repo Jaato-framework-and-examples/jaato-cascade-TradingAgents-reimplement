@@ -91,11 +91,10 @@ whole pipeline as an arm on the echo set at zero model cost.
 .jaato/
   profiles/_base_<agent>.yaml       provider-agnostic stage determinism (13 agents)
   profiles/<set>/<agent>.yaml       provider + model binding, selected by JAATO_PROFILE_SET
-  agents/<agent>.md                 personas ({{param}} substitution, one prefetch)
+  agents/<agent>.md                 personas ({{param}} substitution)
   instructions/00-team.md           the base layer every persona sits on
   completion_schemas/*.json         typed payloads (the signal_completion tool's parameters)
   scripts/processors/*.py           completion gates (validate / render)
-  scripts/prefetch_sentiment.py     the sentiment analyst's pre-fetch (news, StockTwits, Reddit)
 ta_cascade/                         the driver: pipeline, sessions, host tools, data, journal, memory, report
 run_cascade.py                      entry point (scaffolded by `jaato-scaffold new cascade --recoverable`)
 tests/                              unit tests + one end-to-end run on the echo set

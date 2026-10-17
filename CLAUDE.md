@@ -24,7 +24,7 @@ The pipeline, per run (one ticker, one analysis date):
 
 ```
 analysts in sequence  (market → sentiment → news → fundamentals; any subset)
-   each: completion-gated session, host tools (except sentiment: persona prefetch)
+   each: completion-gated session, host tools
 bull ⇄ bear debate    2·max_debate_rounds turns on two long-lived sessions, ask()
 research manager      completion-gated → research_plan
 trader                completion-gated → trader_proposal
@@ -62,11 +62,27 @@ build to the daemon's and makes them move together, which is the opposite of
 what a shared daemon is for.
 
 ```bash
-python -m venv .venv
+# Python 3.14 — the framework declares ">=3.14,<3.15" and the SDK carries the
+# same pin, so a 3.12 venv cannot install the current rc. There is no system
+# python3.14 on this host; `uv python install 3.14` provides one.
+~/.local/bin/python3.14 -m venv .venv
 # The SDK and jaato-eval are both PUBLISHED packages. On a release both come
 # from PyPI; this venv currently tracks release candidates, which live on
 # TestPyPI, so the two index flags are needed and `--pre` is what allows an rc.
 # Pass BOTH indexes: TestPyPI alone cannot resolve pandas/yfinance/starlette.
+#
+# ON A FRESH VENV, CONSTRAIN IT. `--pre` is global: it licenses a pre-release
+# for EVERY package, and with TestPyPI as the primary index pip then prefers
+# whatever is newest there. Run bare into an empty venv on 2026-10-17 it
+# installed pandas 3.1.0rc0, lxml 7.0.0b1, urllib3 2.8.1.dev23, protobuf
+# 7.37.0rc1 and curl_cffi 0.16.4b1 — a backtest must not quietly run on a
+# pandas release candidate. pip has no per-package `--pre`, so pass a
+# constraints file built from the last known-good `pip freeze` (minus the two
+# lines you intend to move) and the drift is nil:
+#   grep -E '^[A-Za-z0-9_.-]+==' freeze.txt | grep -v '^ta.cascade==' > pins.txt
+#   PIP_CONSTRAINT=pins.txt .venv/bin/pip install -e ".[dev,board,sweep]" --pre ...
+# Then diff the freeze anyway. The absence of a complaint from pip is not the
+# same evidence.
 .venv/bin/pip install -e ".[dev,board,sweep]" --pre \
     --index-url https://test.pypi.org/simple/ \
     --extra-index-url https://pypi.org/simple/
@@ -97,30 +113,64 @@ absence of a complaint from pip is not the same evidence.
   `import jaato_server … required for autostart`. It does not apply here —
   `RunConfig.auto_start=False` against a shared daemon never starts one — and
   the `jaato_server checkout` skew check degrades to a WARN for the same
-  reason. Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
-  2026-10-09 on 0.30.0rc6 (TestPyPI): 137 unit tests and the full end-to-end
-  tier pass from a venv holding only the SDK, against a daemon running from an
-  entirely different environment. Moving the client's SDK is a deliberate
+  reason. The tally to expect is **1 fail, 8 warn, 24 checks**
+  (2026-10-17, on 3.14 with SDK 0.30.0rc22). It went to 9 warn earlier that day
+  when `package releases` reported an rc this venv could not install, and back
+  to 8 — PASS, "nothing newer is published" — once the venv moved to 3.14 and
+  took rc22. Compare the LINES, not the number: `jaato_sdk checkout` and
+  `jaato_server checkout` are WARNs here by construction (see #1610 below). Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
+  2026-10-09 on 0.30.0rc6 (TestPyPI), 2026-10-14 on 0.30.0rc16 — the
+  first published build whose `register_client_tools` reports the daemon's
+  per-tool budgets (jaato#1625) — and 2026-10-17 on **0.30.0rc22 under Python
+  3.14.2**, which is what this venv now holds: **147 unit tests and the
+  end-to-end tier both pass** (3 passed in 274.87 s) from a venv holding only
+  the SDK, against a daemon running from an entirely different environment —
+  and, since 2026-10-17, one holding no package of this repository at all. A tier that fails on a loaded host is
+  not a regression: see `docs/gaps.md`, 2026-10-14, on what swap exhaustion
+  does to `session.new`. Moving the client's SDK is a deliberate
   step, not a consequence of pulling jaato: the daemon's venv is reinstalled
   from the checkout after a pull, the client tracks a PUBLISHED SDK and moves
   when someone decides to. `jaato-doctor`'s `package releases` check is what
   says a newer one exists, and after moving, re-run
   `jaato-scaffold integration claude-code --force` — the skill ships with the
   SDK and doctor reports the copy stale by version.
-- **Do not trust `jaato_sdk checkout` PASS — it cannot fail here**
-  (jaato#1610). It reports "client and daemon both resolve jaato_sdk from
-  <path>" while printing OUR path as the daemon's. Its guard tests
-  `realpath(/proc/<pid>/exe) != realpath(sys.executable)`, and a venv's
-  `bin/python` is a symlink to the system binary, so two venvs over one system
-  Python collapse to the same realpath: the guard never fires and the fallback
-  compares our site-packages with itself. Since `dependency coherence` and
-  `jaato_server checkout` are already unavailable (#1576), NOTHING in doctor
-  currently detects a client/daemon framework mismatch for us. Check it by
+- **Both sides run Python 3.14 as of 2026-10-17** (jaato#1076, commit
+  `85424765`): every framework `pyproject.toml`, and the published SDK, declare
+  `requires-python = ">=3.14,<3.15"` — an exact pin, so 3.15 is excluded by
+  declaration too. The daemon venv moved to **3.14.2** and this venv followed
+  the same day, both from `uv`'s standalone build
+  (`~/.local/share/uv/python/cpython-3.14.2-linux-x86_64-gnu`, symlinked at
+  `~/.local/bin/python3.14`). There is still no system `python3.14`;
+  `/usr/bin/python3.12` (3.12.3) is what a bare `python3` gives you, so a venv
+  made without naming the interpreter is the wrong one.
+  **They do not have to match.** Before this venv moved, a 3.12 client was
+  measured driving the 3.14 daemon — `validate` delegating correctly and the
+  end-to-end tier passing (3 passed in 296.14 s) — because the two sides share
+  a wire protocol, not an interpreter, which is the point of the split in §2.
+  What forced this venv to 3.14 was not the daemon but the PUBLISHED SDK: a
+  3.12 venv is refused 0.30.0rc21 and later (*"Ignored the following versions
+  that require a different python version"*), so rc20 was its ceiling. On 3.14
+  the SDK moved rc16 -> **rc22**, the newest on TestPyPI, and the dependency
+  diff against the 3.12 venv is exactly that one line. `--ignore-requires-python`
+  would only have deferred the moment the code genuinely needs 3.14, so it was
+  never the fix. See `docs/gaps.md`, 2026-10-17.
+- **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
+  (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
+  "client and daemon both resolve jaato_sdk from <path>" while printing OUR
+  path as the daemon's, because its guard compared two venvs over one system
+  Python and so compared our site-packages with itself). It is now a WARN:
+  "the daemon's PYTHONPATH names no jaato_sdk, so it uses the copy installed
+  in ITS environment …, which is not yours … so client/daemon checkout skew
+  is unchecked." **The hand-check is still the only thing that resolves it** —
+  what changed is that doctor no longer claims otherwise, which is the part
+  that mattered: a false PASS is worse than a declared blind spot. Check it by
   hand when it matters:
   `/home/apanoia/.local/share/jaato/venv/bin/python -c 'import jaato_sdk; print(jaato_sdk.__file__)'`
   against `.venv/bin/python -c` the same. The mismatch it is meant to predict
   is silent by construction — pydantic drops an unknown event field on ingest
-  and the `AttributeError` surfaces frames away from the cause.
+  and the `AttributeError` surfaces frames away from the cause. With
+  `dependency coherence` and `jaato_server checkout` also unavailable (#1576),
+  nothing in doctor DETECTS such a mismatch for us; all three now admit it.
 - **`jaato-scaffold validate <workspace>` exits 1 on findings that are not
   this workspace's.** It walks the USER tier too (`~/.jaato/profiles/`, a real
   fallback in the resolution path) and, as of jaato `0ccb7069`, 13 errors in
@@ -172,6 +222,20 @@ python -m ta_cascade.score NVDA 2026-08-28      # grade one cell by hand (reads 
 
 Exit codes of the CLI: 0 finished; 1 a node failed (journal kept, re-run
 to resume); 2 daemon unreachable.
+
+**Stopping a sweep, and re-running what it was doing.** Send `SIGINT` to the
+`jaato-eval` parent: it records nothing for the arms in flight, so `--resume`
+re-runs them. Never `pkill` the driver processes — that records them
+`BLOCKED`, which `--resume` then skips permanently and which spends a
+pre-registered exclusion. Then **wait for the arm drivers to exit** before
+touching anything: they outlive the parent, and a workspace moved out from
+under a live driver is simply recreated and finished into. Before re-running
+a batch, the live `--workspaces` root must hold no resume journal
+(`.ta_cascade/journal/`) and no `results/` tree from the voided run — arm
+workspace names are deterministic, so a reused directory resumes the old run,
+and `ta_cascade.score` grades whatever report tree it finds. Move the old
+root aside under a name that says why; do not delete it. (`docs/gaps.md`,
+2026-10-11.)
 
 ### Introspection is the source of truth for jaato
 
@@ -262,9 +326,11 @@ backtests/<name>/          generated matrices: fixture/ (empty) + tasks/<TICKER>
   completion_schemas/*.json           5 typed payloads (analyst_report, research_plan, trader_proposal,
                                       portfolio_decision, reflection)
   scripts/processors/*.py             2 completion gates: analyst_report.py, price_fields.py
-  scripts/prefetch_sentiment.py       the sentiment analyst's four-source prefetch
                                       NB: `.jaato/scripts/` is code the DAEMON runs inside the
-                                      runner (bounded, `ta_cascade` must be importable there).
+                                      runner, and it must be SELF-CONTAINED: stdlib plus its
+                                      own neighbours in that directory, never an import of
+                                      `ta_cascade`. Nothing of this repository is installed in
+                                      the daemon's environment (see §4, Host tools).
                                       It is not the repo's own `scripts/` at the root, below.
   references/<bundle>/*.json           the references CATALOG: one entry per rule, pointing at
                                       its body under knowledge/. Wired on _base_trader as
@@ -310,8 +376,14 @@ uses `IPCRecoveryClient.session(...)` with `client_type=ClientType.API`
 (keeps `signal_completion` on the wire; the daemon strips it for
 terminal/web/chat clients), a real `env_file` (`None` crashes the
 handshake), `connect_timeout=120` (cold autostart takes 30-60 s), and
-`cascade_driver_id` shared by every node of one run (they share one warm
-runner slot; an observer can attach by that id). Decision rationale: the
+`cascade_driver_id` shared by every node of one run (an observer can attach
+by that id). **That is slot AFFINITY, not one slot per run**: a slot serves
+one session, and this pipeline holds several sessions of the same cascade open
+at once — two debaters, then three risk panellists — so each of those claims
+and stamps a slot of its own. Measured over a sweep batch: 5
+`cascade reuse MISS` to 6 `HIT` per 11-session run, i.e. **~5 runner
+processes per concurrent run**, each ~170 MB. It is what makes a sweep's
+memory scale with `concurrency × 5`, not `concurrency` (jaato#1622). Decision rationale: the
 in-process facade applies only `model/provider/plugins/plugin_configs/
 completion_payload_schema/suppress_base_instructions` of a named profile and
 silently ignores `completion_processors`, `spawn_payload_schema`,
@@ -380,16 +452,39 @@ auto_approve: True}` passed as `client_tools=` to `session(...)`; the facade
 registers them after connect and before `create_session` (mid-session
 registration is invisible to the model). `auto_approve` whitelists them with
 the permission plugin so a headless run never blocks on a prompt. Handlers
-run in the driver process, are wrapped in a 45 s deadline, and return
-strings. They exist only while the driver is attached (a cold session woken
-with no client is `DEFERRED`).
+run in the driver process and return strings. They exist only while the
+driver is attached (a cold session woken with no client is `DEFERRED`).
 
-**Prefetch** (`scripts/prefetch_sentiment.py`) is the persona placeholder
-`{{!py?:scripts/prefetch_sentiment.py}}` (the `?` makes failure drop the
-placeholder instead of aborting session-prep). It runs **inside the runner
-at session-prep**, so `ta_cascade` must be importable there, and it must be
-fast: four sources are fetched concurrently under one 20 s deadline. The
-session env key `TA_CASCADE_PREFETCH=off` skips it (the echo set sets it).
+**A handler's deadline is DERIVED, never written down here** (jaato#1625).
+The daemon holds each host-tool call to a budget — 30 s unless the spec's
+`timeout` (MILLISECONDS) names another — and on expiry hands the model
+`{"error": "Client tool <name> timed out after <N>s"}`, a transport error
+where this repository's data contract is a sentence the model can read. So
+`tools.handler_deadline_s` asks `jaato_sdk.client_tool_timeout`, the module
+the daemon's own registration path calls, and subtracts
+`tools.HANDOFF_MARGIN_S` (5 s, covering the result event's trip back). Then
+`sessions.check_tool_budgets` compares the derived numbers against what the
+daemon REPORTS for that session (`session.client.client_tool_timeouts`,
+protocol 1.39+) and raises `ToolBudgetMismatch` on any disagreement,
+including a daemon too old to answer — so the derivation is verified once per
+session rather than trusted. A handler that needs longer than the default
+does not get a bigger constant: it declares `timeout` on its spec, and the
+deadline follows. `TOOL_BUDGET_S = 45.0` used to sit above the daemon's
+budget, which made our deadline dead code and cost five arms of the third
+batch; see `docs/gaps.md`, 2026-10-11.
+
+**Prefetch is NOT used here, and must not come back** (retired 2026-10-17).
+The framework's `{{!py:...}}` placeholder runs a script **inside the runner at
+session-prep**, so its imports resolve in the DAEMON's environment — and
+`script_imports: workspace_venv` is no escape, since it is a `plugin_configs.cli`
+key and the analyst stages declare `plugins: []`. The sentiment analyst used it
+for its four sources, which is why `ta_cascade` was editable-installed into the
+shared daemon venv: the one workspace of thirteen on this host that put a driver
+package there. It now uses host tools like the other three analysts, so the data
+layer runs in the driver process out of this repository's own venv. A
+`.jaato/scripts/` file may import stdlib and its neighbours in that directory
+(`sys.path.insert(0, str(Path(__file__).parent))`, the convention every sibling
+cascade follows) and nothing else. See `docs/gaps.md`, 2026-10-17.
 
 **The `echo` provider** is the framework's deterministic test double:
 `plugin_configs.echo.tool_call` emits one canned tool call on the first
@@ -429,8 +524,11 @@ for `rules_read`.
    end-to-end run failed at the sentiment stage: yfinance stalled inside the
    runner, `session.bootstrap` exceeded its 30 s RPC budget, and the driver
    saw `create_session: no answer within 60.0s`. Anything that runs at
-   session-prep must be bounded. Hence `data.with_deadline`,
-   `data.gather_with_deadline`, and the prefetch switch.
+   session-prep must be bounded. Hence `data.with_deadline`. The prefetch
+   itself is gone (§4), which retires this trap for the sentiment stage —
+   a host tool runs in the driver process, where a stall cannot reach
+   `session.bootstrap` — but the lesson stands for anything added at
+   session-prep later.
 2. **`python -m jaato_server --daemon` returns before the socket is bound.** A
    client with `auto_start=False` must wait for the socket file (the test
    fixture polls for it up to 180 s).
@@ -462,8 +560,8 @@ for `rules_read`.
    irrelevant now (daemon transport) but explains the scaffolded header.
 9. **Reddit's JSON search endpoint is WAF-blocked for anonymous clients;
    the Atom RSS search feed works** with an identified User-Agent. A 429 is
-   retried once after at most `retry_wait_cap` (5 s) — a longer backoff is
-   a failed session under the prefetch deadline.
+   retried once after at most `retry_wait_cap` (5 s) — a longer backoff
+   risks the handler's derived deadline (§4, Host tools).
 10. **StockTwits' public symbol stream serves recent messages only**, so a
     historical window is normally empty and reported as quiet. Crypto pairs
     are addressed as `<BASE>.X`. **Since 2026-09-23 the endpoint answers
@@ -483,6 +581,18 @@ for `rules_read`.
 - Every public function returns `str` and never raises; the failure path
   returns `_unavailable(...)` text. Unknown indicator names, a missing
   credential, network errors, empty frames all become sentences.
+- **That promise covers DATA failures, not our own bugs.** `with_deadline`,
+  which wraps every tool handler, re-raises `NameError` and `AttributeError`
+  (`data.BUGS_NOT_DATA`) rather than rendering them as missing data. It used
+  to render them, and `get_fundamentals` answered `DATA_UNAVAILABLE ...
+  NameError: name 'stale' is not defined` for six days while the analysts
+  dutifully reported a source that was unavailable — a third of a backtest's
+  arms died of it. The narrowing applies at THAT boundary only, because
+  `with_deadline`'s one caller passes our own lambda; inside `data`'s own
+  handlers the same exception is usually the library choking on a bad
+  response. (`gather_with_deadline`, the session-prep sibling, went with the
+  prefetch on 2026-10-17: nothing of this repository's code runs inside the
+  runner any more.) See `docs/gaps.md`, 2026-10-09.
 - **Credentials come from the pass store, one entry each, never a chain**
   (`_pass_secret`): `pass://jaato/finnhub/api-key`, `pass://jaato/fred/api-key`.
   A key that can arrive from several places fails in several ways and the one

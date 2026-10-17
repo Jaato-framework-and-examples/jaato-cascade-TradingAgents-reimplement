@@ -9,7 +9,9 @@ enough for a cold daemon autostart.
 
 Host tools are passed as ``client_tools`` so the facade registers them after
 connect and before ``create_session`` — a tool registered mid-session is not
-seen by the runner-tier model.
+seen by the runner-tier model.  Registration is also where the daemon states
+the deadline it will hold each tool to, so :func:`check_tool_budgets` runs
+once per session, between that answer and the model's first turn.
 """
 from __future__ import annotations
 
@@ -20,11 +22,45 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from jaato_sdk import ClientType, IPCClient, IPCRecoveryClient
 
-from . import sessionlog
+from . import sessionlog, tools
 from .config import RunConfig
 from .observer import OBSERVED_EVENT_TYPES, StageObserver
 
 log = logging.getLogger(__name__)
+
+
+class ToolBudgetMismatch(RuntimeError):
+    """The daemon holds a host tool to a budget its handler was not sized for.
+
+    Raised rather than worked around: the handler deadlines were derived from
+    :mod:`jaato_sdk.client_tool_timeout`, which the daemon's own registration
+    path calls, so a disagreement means the two sides are not the build they
+    report themselves to be — and a backtest arm must not run on that.
+    """
+
+
+def check_tool_budgets(expected: Dict[str, float], reported: Dict[str, float]) -> None:
+    """Fail unless the daemon reports the budgets the handlers were sized for.
+
+    ``expected`` is :func:`ta_cascade.tools.declared_budgets`; ``reported`` is
+    ``session.client.client_tool_timeouts``, what the daemon answered to this
+    session's registration (protocol 1.39+, jaato#1625).  A daemon too old to
+    report them answers nothing, which is a mismatch like any other: the
+    handler deadlines would be sized against a budget nobody confirmed.
+    """
+    if not expected:
+        return
+    if not reported:
+        raise ToolBudgetMismatch(
+            f"the daemon reported no host-tool budgets for {sorted(expected)} — "
+            "it is older than protocol 1.39 (jaato#1625), so the handler "
+            "deadlines cannot be checked against what it will enforce")
+    off = {name: (want, reported.get(name)) for name, want in expected.items()
+           if reported.get(name) != want}
+    if off:
+        raise ToolBudgetMismatch(
+            "the daemon's host-tool budgets differ from what the handlers were "
+            f"sized for (name: ours, theirs): {off}")
 
 
 def _on_status(status: Any) -> None:
@@ -72,7 +108,8 @@ def open_stage(
         cascade_driver_id=cascade_id,
         client_tools=client_tools,
     )
-    return _accounted(inner, cfg, profile=profile, agent=agent, cascade_id=cascade_id)
+    return _accounted(inner, cfg, profile=profile, agent=agent, cascade_id=cascade_id,
+                      client_tools=client_tools)
 
 
 async def _consumption(session) -> Dict[str, Any]:
@@ -90,7 +127,8 @@ async def _consumption(session) -> Dict[str, Any]:
 
 
 @contextlib.asynccontextmanager
-async def _accounted(inner, cfg: RunConfig, *, profile: str, agent: str, cascade_id: str):
+async def _accounted(inner, cfg: RunConfig, *, profile: str, agent: str, cascade_id: str,
+                     client_tools: Optional[List[Dict[str, Any]]] = None):
     """Wrap a stage's session so the run keeps an account of it.
 
     The ``ended`` line is written from the ``finally``, which runs INSIDE the
@@ -102,6 +140,11 @@ async def _accounted(inner, cfg: RunConfig, *, profile: str, agent: str, cascade
     async with inner as session:
         sid = getattr(session, "session_id", "") or ""
         sessionlog.write(cfg, "started", sid, stage=profile, agent=agent, cascade_id=cascade_id)
+        # Asked here because registration happened inside `inner.__aenter__`,
+        # between connect and create_session: this is the first moment the
+        # daemon's answer exists, and the last before the model can call a tool.
+        check_tool_budgets(tools.declared_budgets(client_tools or []),
+                           session.client.client_tool_timeouts)
         failed = None
         try:
             yield session

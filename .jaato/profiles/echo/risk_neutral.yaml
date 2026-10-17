@@ -12,5 +12,3 @@ plugin_configs:
       prompt_tokens: 1000
       output_tokens: 200
     response: 'Neutral: echo splits the difference.'
-env:
-  TA_CASCADE_PREFETCH: 'off'

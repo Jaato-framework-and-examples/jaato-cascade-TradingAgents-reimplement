@@ -101,20 +101,6 @@ def test_reddit_429_retries_once_within_cap(monkeypatch):
     assert len(attempts) == 2 and "1 in-window posts" in text
 
 
-def test_gather_with_deadline_isolates_slow_and_broken_jobs():
-    import time
-
-    def slow():
-        time.sleep(2); return "late"
-
-    def broken():
-        raise RuntimeError("nope")
-
-    out = data.gather_with_deadline(0.3, {"fast": (lambda: "ok",), "slow": (slow,), "broken": (broken,)})
-    assert out["fast"] == "ok"
-    assert out["slow"].startswith(data.UNAVAILABLE) and out["broken"].startswith(data.UNAVAILABLE)
-
-
 def test_crypto_base():
     assert data.crypto_base("BTC-USD") == "BTC" and data.crypto_base("eth-usdt") == "ETH"
     assert data.crypto_base("NVDA") is None and data.crypto_base("BRK-B") is None

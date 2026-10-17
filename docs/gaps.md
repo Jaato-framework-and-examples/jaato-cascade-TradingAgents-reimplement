@@ -20,7 +20,7 @@ expected to change.
 | 11 | **`echo` cannot script a multi-turn tool loop** (one call, then text). Driver-level tests cover control flow, journal and processors; the analyst loop is tested against a real model or a recorded provider trace. | low | per-stage echo profiles drive the whole pipeline end to end (`tests/test_pipeline_echo.py`); the analyst tool loop itself still needs a live model or a replay fixture. | done (control flow); the live analyst loop ran on 2026-09-08, see the live-run findings below |
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
-| 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are fetched by the sentiment prefetch alongside company and market news, all four concurrently under one 20 s deadline. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `data.gather_with_deadline`; fixture tests in `tests/test_social.py`. | done |
+| 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are reached by the sentiment analyst's own host tools (`get_stocktwits_messages`, `get_reddit_posts`), alongside company and market news. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `tools.sentiment_tools`; fixture tests in `tests/test_social.py`. Fetched by a persona prefetch until 2026-10-17 — see that date below. | done |
 | 15 | **No budget ceiling on any stage.** jaato-server 0.12.0's validator flags every profile `budget_control_absent`: no stage is bounded on usd, tokens, seconds, tool_calls or turns, so a tool-call loop stops only at the provider bill. `max_turns` was declared per stage and bounded nothing; jaato#1068 removed the key. | medium | `budget_control` in each `_base_<agent>` profile, sized per stage group from measured usage with roughly 4–5× headroom: analysts `tool_calls 60 / usd 1.50 / seconds 600 / turns 8`, debaters `10 / 2.00 / 600 / turns 12`, judges `30 / 1.50 / 480 / turns 6`, the reflector the same with `turns 4`; `abort` at 100%. The `turns` limits are the numbers `max_turns` carried before jaato#1068 removed that key. Limits are per session and MIN-WINS, so a set profile can tighten a ceiling but never raise it. `usd` is OpenRouter's own reported cost per call, not an estimate, and does not advance on the echo set, which reports none. The evidence is thin — dollar figures for two stages from one run — so revisit the numbers once several runs give per-stage cost. An abort fails the run as `StageFailed` naming the stage or debate turn and the daemon's reason, journal kept; before jaato#1007 a capped debater hung the run instead (see the budget-abort findings below). | done |
 
 Status vocabulary: `open` (nothing done), `planned` (design settled, code pending),
@@ -1198,6 +1198,18 @@ installed rc (0.30.0rc6). A source tree against an installed copy is the case
 `_skew_verdict` grades **FAIL** by design. Doctor printed OUR path as the
 daemon's and called it agreement.
 
+Re-checked by hand on 2026-10-11 before launching the third AAPL batch, with
+the recipe this file prescribes: still 0.30.0 (daemon, source checkout)
+against 0.30.0rc6 (this venv), and doctor still PASSes. Re-checked again after the
+2026-10-11 pull to `b120c2ce` and reported on the ticket: **both sides
+declare the same version strings** (jaato-sdk 0.30.0 vs 0.30.0rc6,
+jaato-server 1.3.0 either way), so a pull that changes behaviour without a
+version bump leaves nothing in pip, doctor or a session record to tell the
+two builds apart — only the commit. The pairing is not a
+blocker — it is what the two completed arms of batch one and the whole
+end-to-end tier ran against — but no check in doctor would tell us if it
+became one.
+
 Root cause, every predicate measured rather than argued:
 
 ```
@@ -1317,6 +1329,775 @@ the client's.
 Until it is fixed, judge this workspace by `tier` (`--json`) or
 `grep '[workspace]'`, not by the exit code. Not a workaround in code — no
 driver behaviour depends on it — just how to read the output.
+
+### A sweep's memory scales with concurrency × 5, not concurrency (2026-10-09, jaato#1622)
+
+The first batch of the 564-cell `predict-2026-10` sweep was launched at
+`--concurrency 4` and had to be abandoned: the box reached **23–25
+`jaato_server.server.runner` processes**, available memory fell 2257 → 617 MB
+and swap was fully consumed (2047/2047 MB). Seven arms had been recorded, all
+seven are voided, and the registration says so
+(`docs/preregistration-2026-10.md` §10, 2026-10-09).
+
+**Why, with the evidence.** A runner slot serves ONE session. A cascade's
+sessions share slot *affinity* through `cascade_driver_id`, which is not the
+same as sharing a slot — and this pipeline deliberately keeps several sessions
+of one cascade open at the same time: the bull and bear debate on two
+long-lived sessions, the risk panel on three. Each of those concurrent
+sessions therefore takes a PURE IDLE slot and stamps it with the same cascade
+(`PoolManager.acquire_slot` path 2). Counted from `/tmp/jaato.log.1` over the
+batch's seven cascades: **29 `cascade reuse MISS` to 19 `HIT`**, and each of
+the two arms that completed shows **5 MISS / 6 HIT** across its 11 sessions.
+So one arm holds about five runner processes at peak, ~170 MB each. Four
+concurrent arms is ~20, plus the virgin floor (`JAATO_RUNNER_POOL_SIZE`) and
+the per-cascade reservations that linger for the pool's 300 s
+`cascade_idle_timeout_seconds` — which is the 23–25 observed. Re-running at
+`--concurrency 2` with the pool at its default 2 gives 9–11 runners, the same
+ratio.
+
+**A MISS is not a cold spawn,** and the first version of this finding said it
+was. `acquire_slot` logs "cascade reuse MISS — fresh slot" when it takes a
+warm pure-idle slot and stamps it; "fresh" means freshly stamped. Cold-spawn
+is only the path where no idle slot qualifies at all. So the latency half of
+`jaato-eval`'s pool advice is sound and `JAATO_RUNNER_POOL_SIZE` is not what
+the memory went on.
+
+**Filed as jaato#1622**, because what is wrong is in the framework and not
+here: `jaato-eval`'s `pool_size_advice` prints
+`JAATO_RUNNER_POOL_SIZE should be >= {concurrency}` on the stated assumption
+that "each simultaneous arm needs its own warm slot", which holds for a
+single-session arm and for a strictly sequential cascade but not for a
+`harness.kind: driver` arm with concurrent sessions. It is the only guidance a
+sweep planner is given, it is read as a resource estimate, and it understates
+this harness by 5×. The issue suggests the sweep report observed
+slots-per-arm from the daemon's own `cascade_slot_reuse_*` counters after the
+first arm, rather than guessing.
+
+**What this repository changes: nothing in code.** The number to pick is
+`--concurrency`, and it is picked from measurement — `concurrency × 5 × 170 MB`
+is the floor on what a sweep will occupy, against `free -m`'s *available*
+column, not its *free* one. No driver behaviour depends on the pool, and
+adding a knob here to compensate for a framework estimate would be the
+workaround this project does not write. `CLAUDE.md` §4 carried the wrong claim
+("they share one warm runner slot") and has been corrected.
+
+**One thing this does not explain.** `AAPL/2025-11-03` FAILed at
+`fundamentals_analyst` with `DriverStoppedShort: driver exited 1`,
+`nudges=0`, `finish=stop`, no budget ceiling reached and no gate refusal — so
+it is neither nudge exhaustion nor a budget abort, and there is no evidence
+either way on whether contention caused it. Carried as open: if that cell
+fails the same way on a quiet host, the cause is in the pipeline.
+
+### `get_fundamentals` raised a NameError for six days and nobody could tell (2026-10-09, fixed 2026-10-11)
+
+`ta_cascade/tools.py` built the fundamentals analyst's `get_fundamentals`
+spec with a lambda closing over `stale`, a name bound in `market_tools` and
+never in `fundamentals_tools`. Every call, every ticker, every date answered:
+
+```
+DATA_UNAVAILABLE: <lambda> could not be retrieved (NameError: name 'stale' is
+not defined). Do not estimate or invent these values; state that the data was
+unavailable.
+```
+
+Reproducible in one line, no network and no daemon — which is the measure of
+how cheap this was to catch and was not:
+
+```python
+tools.fundamentals_tools(RunConfig(ticker="AAPL", trade_date="2025-11-17"))
+```
+
+`git blame` puts it on `9a9aa2d`, 2026-10-03 — the commit that stopped the
+`info` block being lookahead. `fundamentals()` gained a `max_stale_days`
+keyword, `market_tools` gained the local binding it needed, and
+`fundamentals_tools` did not.
+
+**Three separate failures let it stand, and the fix addresses each.**
+
+**1. The exception was rendered as a data failure.** `data.with_deadline`
+caught everything and returned `_unavailable(...)`, so a typo in our own code
+produced a sentence indistinguishable from a dead endpoint. The data layer's
+contract — never raise, every failure is a sentence (§7 of `CLAUDE.md`) — is
+about DATA failures; it was never meant to cover our bugs. `with_deadline`
+now re-raises `NameError` and `AttributeError` (`data.BUGS_NOT_DATA`). The
+scope is deliberate and narrow: its only caller is `tools._spec`, whose `fn`
+is one of our own lambdas, and a lambda does nothing but call a function in
+`data` that already catches its own library errors — so one of those two
+exceptions arriving there is ours. The same narrowing is NOT applied inside
+`data`'s own handlers, where an `AttributeError` is usually yfinance choking
+on a bad response, and guessing which it was would be the inference the data
+contract exists to avoid. `gather_with_deadline` is also left alone: it runs
+the sentiment prefetch inside the runner at session-prep, where an exception
+kills the session (trap #1), and its job is isolation.
+
+**2. The test asserted the handler EXISTS.** `test_specs_are_well_formed`
+checks `callable(spec["handler"])`, and a lambda body is only resolved when it
+runs, so the unbound name was invisible to it.
+`test_every_handler_can_actually_be_called` now calls every handler once with
+the data layer stubbed and schema-derived arguments, so a new tool is covered
+the day it is added. **The first version of that test was worthless** — the
+stub loop replaced `with_deadline` too, so `guarded` returned the stub without
+ever running the lambda, and the test passed with the bug reintroduced.
+Verified the corrected version by reintroducing the bug: it fails with the
+NameError, which also proves the re-raise above works.
+
+**3. A non-empty `errors[]` stops the run, and a blank string is non-empty.**
+This is what turned one broken tool into lost cells. The analysts reported the
+unavailable tool honestly, and WHERE they reported it decided the arm:
+
+| cell | `errors[]` | arm |
+|---|---|---|
+| AAPL/2025-11-03 | `["get_fundamentals returned NameError ('stale'); no headline ratios available for valuation"]` | FAIL |
+| AAPL/2025-11-17 | `[""]` | FAIL |
+| AAPL/2025-11-10, AAPL/2025-11-03 | `[]`, same tool failure filed under `warnings` | PASS |
+
+Two FAILs in six settled arms, from one deterministic bug and a
+model-dependent choice of field. The schemas already SAID so — the `errors`
+description reads "never a placeholder such as "none", "n/a" or """ and "put
+anything that is merely a caveat in warnings" — and the model ignored it. A
+description is a request; `"minLength": 1` on the items is a constraint, so
+`[""]` is now refused by the daemon when `signal_completion` is validated and
+the model is told why, instead of being interpreted by the driver afterwards.
+Applied to all five schemas, not just `analyst_report`: the shape and the
+driver's rule are identical in every gated stage, and fixing one would have
+left the same trap in four.
+
+**What was NOT changed, and why.** A genuine `errors[]` entry still fails the
+stage — that is the contract, and it is right. Whether a tool reporting
+`DATA_UNAVAILABLE` *belongs* in `errors` or `warnings` is still decided by the
+model rather than by the pipeline, and making that a persona edit is a change
+to what is under test, so it is left open rather than slipped in
+mid-experiment.
+
+**Cost.** The second AAPL batch is voided
+(`results-VOIDED-2026-10-09-broken-get-fundamentals.jsonl`; registration §10),
+because all three of its arms ran against the broken tool. The scientific
+impact is smaller than the operational one: §2 of the registration already
+withholds the `info` ratios from a historical cell, so a working
+`get_fundamentals` returns the withheld-notice plus the company identity —
+which the model also receives in `instrument_context`. What the analyst could
+SEE barely changes. What changes is that a third of the arms stop dying.
+
+**And possibly which FIELD the analyst files it under** (first arm of the
+third batch, 2026-10-11 — one observation, stated as a hypothesis the batch
+will settle). Both sentences open with `DATA_UNAVAILABLE`, but they are not
+equivalent:
+
+| | what the analyst read |
+|---|---|
+| until 2026-10-11 | `DATA_UNAVAILABLE: <lambda> could not be retrieved (NameError: name 'stale' is not defined)` |
+| after | `DATA_UNAVAILABLE: the info block's valuation and performance ratios are undated — they describe today, N days after <as_of> — so quoting them here would be reading the future. They are withheld. Use `get_statement` for figures dated on or before <as_of>…` |
+
+The second states a reason, says the withholding is deliberate, and names the
+substitute. The first states nothing. On `AAPL/2025-11-10` the analyst
+paraphrased the second accurately — "the headline ratios it normally returns
+were undated and described a date roughly 335 days after the analysis date —
+i.e. they would be reading the future. I am not using them. All numbers below
+come from the three statements." — and filed it under **`warnings`**, then
+wrote a full report from the statements. Under the broken sentence, the same
+tool's silence went into `errors[]` and stopped the run.
+
+If that holds across the batch, the persona edit considered as option D (tell
+the analysts explicitly that an unavailable tool is a warning) is unnecessary:
+the sentence that explains itself does the work, and the fix for the field
+choice was the fix for the bug. If some arms still file it under `errors`, the
+batch measures the rate, which is the number that would justify a
+model-facing change. Either way it was right NOT to edit the personas at the
+same time as fixing the bug — doing both would have made this unmeasurable.
+
+**Narrowed the same day, by a failure with the same symptom and a different
+cause.** The hypothesis above holds for the fundamentals analyst — 17 arms in,
+every one of its reports carries `errors: []`. But `AAPL/2026-02-23` died of
+`DriverStoppedShort` with `errors: ['no-error-placeholder']`, from the
+PORTFOLIO MANAGER, which had nothing to report and no broken tool. See the
+next finding: the disease there is the protocol, not the sentence.
+
+### A required array that is normally empty is a trap in field-by-field completion (2026-10-11, jaato#1626)
+
+`AAPL/2026-02-23` completed every stage — three analyst reports, both
+debates, the research plan, the trader proposal — and then was discarded with
+a valid `Hold` sitting in the payload, because `errors` arrived as
+`['no-error-placeholder']` and `pipeline._require` treats a non-empty
+`errors[]` as `StageFailed`.
+
+**What actually happened**, from the session's own history (`.jaato/sessions/`,
+the `function_call` parts; note they are flat with a `type` discriminator —
+`{"type": "function_call", "name": …, "args": …}` — not nested under a
+`function_call` key, which cost one wrong reading first):
+
+| turn | call |
+|---|---|
+| 1 | `prepare_completion("errors", "[]")` — the STRING `"[]"`, not an empty array |
+| 5 | `prepare_completion("errors", "")` |
+| 7 | `prepare_completion("errors", "[]")` |
+| 11 | `prepare_completion("errors[0]", "no-error-placeholder")` |
+| 13 | `prepare_completion("errors", "")` |
+| 15 | `prepare_completion("errors[0]", "no-error-placeholder")` |
+| 17 | `signal_completion()` — arg-less, the framework synthesizing from accumulated state |
+
+Eight turns spent trying to say "there are no errors". `explain plugin
+lifecycle` is explicit that `prepare_completion`'s `value` takes whatever the
+schema expects for that path, arrays included, so an empty array IS
+expressible and the framework was right to reject each attempt. The model
+could not produce one. What it eventually found was that indexing `errors[0]`
+is accepted — and an array with an element is not empty.
+
+**It is the protocol shape, not the agent.** Across the first 17 arms
+(~110 sessions) M3 completes ONE-SHOT almost always — 16 to 19 sessions per
+agent — and one-shot gets `errors: []` right every single time. Field-by-field
+occurred 7 times, and all 7 flailed the same way:
+
+| cell / agent | sequence | outcome |
+|---|---|---|
+| 2026-01-05 news | `"[]"` → `errors[0]=""` → one-shot `[]` | recovered |
+| 2026-01-12 news | `"[]"` → `errors[0]=""` → one-shot `[]` | recovered |
+| 2026-02-02 fundamentals | `"[]"` → `errors[0]="__PLACEHOLDER__"` → `""` → one-shot `[]` | recovered |
+| 2026-02-23 fundamentals | `"[]"` → `""` → `errors[0]=""` → one-shot `[]` | recovered |
+| 2026-03-02 fundamentals | `"[]"` → `""` → one-shot `[]` | recovered |
+| 2025-12-15 research manager | `"[]"` → `["none"]` → `""` → `errors[0]=""` → … | recovered |
+| **2026-02-23 portfolio manager** | `"[]"` → `""` → `"[]"` → `errors[0]="no-error-placeholder"` | **arm lost** |
+
+Six recovered by abandoning field-by-field for one-shot. The seventh satisfied
+`is_complete` with a token instead, and `signal_completion()` fired on a
+payload whose `errors` field said, in words, that it was a placeholder.
+
+This is the `prose_tool_calls` quirk that `explain provider minimax` names and
+does not describe, and that `.jaato/profiles/minimax_m3/` records as
+unmeasured here. It is now measured: it does not garble prose, it sends a
+JSON-ish STRING where a typed value is expected, and the only field in these
+five schemas where that is fatal is an array whose correct value is empty.
+
+**`minLength: 1` neither caused nor fixed it.** Without the constraint the
+same path lands on `errors[0] = ""`, i.e. `[""]`, which is non-empty and kills
+the stage identically — that is precisely the second batch's signature. The
+constraint changed the token, not the outcome.
+
+**Cost, and what it is not.** One arm of 17 (~6%). A `DriverStoppedShort` arm
+is recorded `FAIL`, not `BLOCKED`, so it spends none of §7's 57 permitted
+exclusions, yet it yields no rating and so contributes nothing to §4 — the
+sample shrinks silently. At this rate ~33 of 564 cells would vanish without
+moving the kill switch. Whether a pipeline failure should count against §7 is
+a registration question, recorded in the preregistration rather than decided
+here.
+
+**Not fixed while the batch runs**, so that all 47 arms run one pipeline. Two
+changes are proposed for the batch boundary:
+
+- **Drop `errors` and `warnings` from `required` in the five schemas.**
+  `pending_required_fields` then never asks for them, `is_complete` goes true
+  without the model touching them, and absence means no error. `_require`
+  already reads `payload.get("errors") or []`, so **the driver needs no
+  change** — it handles absence today. The cost is the strict-shape
+  convention (`additionalProperties: false` plus exhaustive `required`) that
+  every schema here follows.
+- **Filed as jaato#1626.** Eight turns of rejection never taught the model
+  the accepted shape, and the quirk doing the damage is one the provider
+  profile already declares. The trap is generic to any schema with a
+  normally-empty required array, which makes it the framework's to carry
+  rather than this driver's. The issue asks first for a rejection message
+  that shows the accepted form, which on the evidence would close it on its
+  own, and notes that the author-side mitigations do not work: `minLength: 1`
+  is satisfied by `"none"`, and a description forbidding `"none"` by name was
+  ignored twice in those words.
+
+**Second instance, 24 arms in, and it narrows the cause.** `AAPL/2026-04-27`
+died the same way at the RESEARCH MANAGER, six sessions in:
+
+```
+prep errors   = "[]"                               (string)
+prep warnings = "[\"Headline valuation ratios …"   (string holding JSON)
+prep errors   = ""
+prep warnings = ["Headline valuation ratios we…]   <- correct ARRAY, second try
+prep errors   = ["none"]                           <- correct array, placeholder content
+signal(args)
+```
+
+The model mangles an array value once and then **gets it right** — `warnings`
+arrives as a proper array on the retry. What it never produces is an EMPTY
+array: for `errors`, whose correct value is `[]`, it substituted `["none"]`.
+
+So the trap is not array typing, which works. It is specifically **a required
+array whose correct value is empty**, and that is the whole of it. Two
+consequences:
+
+- The proposed fix is the right shape: dropping `errors`/`warnings` from
+  `required` removes exactly the field the model cannot express and leaves
+  array handling, which is fine, untouched.
+- `"none"` is the placeholder the schema's own description forbids **by
+  name**, and `minLength: 1` accepts it at four characters. A description does
+  not constrain a model; structure does. That is the second time in two days
+  this repository has learned it — the first was the `[""]` these descriptions
+  also already forbade.
+
+Rate after 24 arms: 2 lost (~8%).
+
+**FIXED upstream (2026-10-14, jaato `513f937b`, issue closed 2026-10-13).**
+Present from jaato `976c3773`, the build this workspace's daemon now runs.
+Four changes, all four of what would have closed it:
+
+- `"[]"` on an array path is converted to `[]` (the #1358 coercion rule
+  applied to the leaf schema), so the shape the model kept sending is now the
+  shape that works. `""` is still refused, correctly.
+- a rejection on an array or object path **names the accepted shape**
+  (`value=[] for none`) — the one ask that, on this repository's evidence,
+  would have closed it alone.
+- every pending array field that may be empty (no positive `minItems`) carries
+  `set_empty_with` — the literal call,
+  `prepare_completion(field_path='errors', value=[])` — in every
+  `prepare_completion` and `query_completion` answer, so the accepted form is
+  in front of the model on every turn rather than discoverable by luck.
+- the tool and value-parameter descriptions name the empty array.
+
+**So the queued schema change is retired.** Our five schemas declare no
+`minItems` — the `minLength: 1` added on 10-11 sits on the ITEMS, not the
+array — so `set_empty_with` reaches `errors`, `warnings` and `tools_used` with
+the schemas exactly as committed. Dropping `errors`/`warnings` from `required`
+is no longer needed to make an empty array reachable, and the strict-shape
+convention is kept. What remains is to confirm it on the first live arms: the
+observable is a completion that sets `errors=[]` directly instead of the
+`errors[0]=<placeholder>` this entry was written about.
+
+### `TOOL_BUDGET_S` is 45s and the daemon gives a client tool 30s (2026-10-11, jaato#1625)
+
+`AAPL/2026-05-18` died at the news analyst with every one of its tools
+reporting, verbatim to the model:
+
+```
+{"error": "Client tool get_company_news timed out after 30.0s"}
+```
+
+Six calls, `get_company_news`, `get_global_news`, `get_insider_transactions`
+and `get_macro_series` ×3. `turn_accounting` shows all six **started within 27
+milliseconds** of each other (13:38:17.4887 → .5150) and all six cut at
+30.05s, so dispatch is parallel and the clock is one the DAEMON keeps.
+
+**`tools.py` sets `TOOL_BUDGET_S = 45.0`.** It is larger than the daemon's
+budget, so for any handler taking between 30 and 45 seconds our deadline is
+dead code: the daemon answers first and the model receives a raw transport
+error instead of
+
+```
+DATA_UNAVAILABLE: <tool> did not answer within 45s. Do not estimate or invent these values.
+```
+
+That sentence is the data layer's whole contract (§7 of CLAUDE.md) — the
+instruction not to invent travels WITH the failure, and the three kinds of
+nothing stay distinguishable. A `{"error": …}` object carries none of it.
+The fix is to put `TOOL_BUDGET_S` below the daemon's budget so ours fires
+first; it is **not** applied mid-batch, so that all 47 arms run one pipeline.
+
+**The clock is undocumented.** `jaato-scaffold explain clients` prints a
+table introduced as "every clock between connect and a turn's terminus", and
+this one is not in it — not in the shipped snapshot and not when a running
+daemon is asked with `--connect`. Nor does `explain env` expose a knob for
+it: the only timeouts there are `JAATO_EPHEMERAL_TIMEOUT_S`,
+`JAATO_RUNNER_ACK_TIMEOUT`, `JAATO_CREDENTIAL_LOCK_TIMEOUT`,
+`JAATO_CLARIFICATION_TIMEOUT` and `JAATO_PERMISSION_TIMEOUT`. Filed as **jaato#1625**: a driver cannot size its own handler budget
+against a limit the framework does not state, and introspection is supposed
+to be the source of truth. The issue asks for three things in order — put the
+clock in the `explain clients` table, expose it like the other per-concern
+clocks, and ideally return it from the handshake that accepts `client_tools=`
+so a client derives its deadline instead of guessing.
+
+**FIXED upstream (2026-10-14, jaato `991be687`, issue closed 2026-10-14).**
+Present from jaato `976c3773`. `explain clients` now carries the row:
+
+```
+30s   client_tools=[{'timeout': <ms>}] per tool        both
+      ONE host-tool call, daemon-side (the spec value is in ms)
+      on expiry: the MODEL gets {"error": "Client tool <name> timed out after <N>s"}
+```
+
+and states the rule this entry had to derive from a dead arm — *"A host tool's
+handler that applies its own deadline (to return an answer the model can read)
+must fire BEFORE the daemon's"* — and the handshake now reports the budget:
+`register_client_tools()` returns `{name: seconds}` per tool and keeps it on
+`client.client_tool_timeouts` (protocol 1.39+). All three asks, in the order
+they were asked.
+
+**The two halves cost differently here, measured in the installed SDK rather
+than assumed.** SETTING the budget needs no SDK move: 0.30.0rc6's
+`register_client_tools` already documents an optional `timeout` in ms and
+forwards every spec key except `handler`, so a `timeout` on each spec in
+`tools.py` reaches the daemon today. READING it does need one: rc6 returns
+`None` and carries no `client_tool_timeouts`; `jaato-doctor`'s
+`package releases` check names 0.30.0rc16 on TestPyPI. So the fix for
+`TOOL_BUDGET_S` is now a choice between making our number the daemon's number
+(one spec key, no SDK move) and deriving ours from the daemon's (no hardcoded
+number anywhere, but the client SDK moves first) — not the blind lowering this
+entry originally proposed.
+
+**CLOSED HERE (2026-10-14): the deriving one, by operator decision.** The
+client venv moved to `jaato-sdk` 0.30.0rc16 (one line in `pip freeze`, nothing
+substituted) and `TOOL_BUDGET_S` is gone:
+
+- `tools.handler_deadline_s(spec)` asks `jaato_sdk.client_tool_timeout`, the
+  module the DAEMON's registration path also calls, for the budget that spec
+  will be held to, and subtracts `tools.HANDOFF_MARGIN_S`. No budget is
+  written down in this repository, so if the framework's default moves, every
+  handler follows it. The margin — 5 s, covering the result event's trip back
+  — is the only number left, and it is a margin, not a budget.
+- `sessions.check_tool_budgets` compares the derived numbers against what the
+  daemon REPORTS for that session (`session.client.client_tool_timeouts`,
+  protocol 1.39+) and raises `ToolBudgetMismatch` on any disagreement,
+  including a daemon too old to answer. It runs inside `_accounted` after
+  registration and before the stage's first turn — the first moment the
+  answer exists and the last before the model can call a tool — so a
+  disagreement fails the stage instead of being discovered in a dead arm.
+- a tool that needs longer does not get a bigger constant: it declares
+  `timeout` (ms) on its spec, and its deadline follows. `handler_deadline_s`
+  refuses a budget smaller than the margin rather than clamping it.
+
+**What this does and does not buy.** Every handler now fires at 25 s against
+the daemon's 30 s, so a stalled dependency reaches the model as the data
+layer's sentence rather than as a transport error — which is what killed five
+arms. It does NOT make slow data arrive: `data.FINNHUB_TIMEOUT_S` is 20 s with
+one retry, a ~40 s worst case that still exceeds the budget, so a Finnhub
+stall now produces our sentence instead of their error. Making the data arrive
+is a separate sizing decision — either declare `timeout: 50000` on the three
+news specs, or cut the data layer's own retry so the chain fits inside 25 s —
+and it is not taken here.
+
+**What stalled THIS arm is not established.** Lowering the budget would have
+produced six of our own sentences at 25s rather than six transport errors at
+30s; it would not have made the tools answer. Candidates and their standing:
+
+- *Host starvation of one driver process.* Fits that exactly one arm of 26
+  was hit while its concurrent neighbour was fine, and the box carries 2 GB
+  of swap in use. But there is **no load measurement from 13:38**, so this
+  is a hypothesis, not a finding.
+- *`pass`/`gpg-agent` contention.* Every one of the six tools needs a
+  pass-store credential, and the `market_analyst` session that succeeded 60
+  seconds earlier uses only yfinance tools, which need none — a striking
+  correlation, and `functools.lru_cache` does not deduplicate IN-FLIGHT
+  calls, so six cold concurrent lookups do spawn six `pass` subprocesses.
+  **But it does not survive the retries:** `_pass_secret` has
+  `timeout=10` and caches its `None`, so a stuck `pass` would make later
+  calls return instantly rather than time out again at 30s, and every retry
+  across 3.5 minutes timed out. Recorded as refuted on present evidence.
+
+What would settle it: sampling load and per-process state during a sweep, or
+logging the handler's own elapsed time inside `with_deadline` so the driver's
+view and the daemon's can be compared directly. Neither exists yet.
+
+**Three pipeline failures in 26 arms (~11.5%), three causes** — two of them
+the empty-array trap above (portfolio manager, research manager) and this
+one. The arms are recorded `FAIL`, so none spends a §7 exclusion; see the
+preregistration's open question of 2026-10-11.
+
+
+**A better way to stop a sweep, learned here.** `SIGINT` to the `jaato-eval`
+parent recorded three arms and **zero BLOCKED** — the two in flight were
+simply not written, so `--resume` re-runs them. `pkill` on the driver
+processes, which is what was done two batches earlier, recorded four arms as
+`BLOCKED` and would have spent four of the 57 permitted exclusions on the
+operator.
+
+**But SIGINT stops the RECORD, not the work** (found 2026-10-11, while
+preparing the third batch). Two arm workspaces for cells the stop had left
+unrecorded — `AAPL/2025-11-24` and `AAPL/2025-12-01` — were sitting in the
+live `--workspaces` root with directory mtimes of 23:05 and 23:07, *later*
+than the copies already moved aside at 22:55 and 22:58, and carrying a
+`report.md` those copies did not have. The arm drivers had outlived the
+parent: the move pulled their directories out from under them, they
+recreated them and ran on to write a report (2–3 and ~7 sessions, against
+the 11 of a settled arm).
+
+Two consequences, both operational:
+
+- **Wait for the drivers to exit before touching workspaces.** Moving a
+  workspace while its driver runs does not orphan the driver, it orphans the
+  directory: a fresh one appears in its place and the voided run finishes
+  into it.
+- **An unrecorded arm is not an arm that did not run.** These two spent real
+  provider budget that appears in no `results.jsonl`, so a sweep's cost read
+  from the results file alone understates what was actually bought. It is
+  the same shape of error as keying `sweep.py` by cell instead of by arm,
+  which read the pilot's $47 as $9.
+
+They were moved to `/tmp/predict-2026-10-ws-VOIDED-orphans-after-sigint/`
+rather than deleted, for the same reason the other two batches were: the
+re-run reuses arm workspace paths deterministically, and
+`python -m ta_cascade.score` grades whatever report tree it finds under
+`./results`. A voided run's `portfolio_decision` left in place would have
+been graded as the new one's if a re-run failed before overwriting it.
+
+### `--no-memory` does not gate the READ of past decisions (2026-10-11)
+
+Every backtest arm runs the driver with `--no-memory`, and `cli.py:194`
+turns that into `record_decision=False, resolve_pending=False`. Both are
+honoured. But `pipeline.run` builds `past_context=memory.past_context(...)`
+unconditionally a few lines further down, so the flag suppresses *writing* a
+decision and *scoring* the pending ones while still **reading** the log and
+handing it to the portfolio manager.
+
+The log it reads is `~/.ta_cascade/decisions.jsonl` by default
+(`config.py:119`) — one file shared by every arm of every sweep and every
+manual run on the box, unless `TA_CASCADE_DECISION_LOG` says otherwise, and
+no `task.yaml` sets it.
+
+**Nothing leaked into the AAPL batch, and the reason is the point-in-time
+filter, not the flag.** The shared log holds four entries, two of them
+`resolved` (NVDA 2026-09-04 and 2026-09-22). `past_context` keeps a resolved
+entry only when `resolved_on <= as_of`, and `as_of` is the cell's trade date
+— every AAPL cell is in 2025, every resolution is in 2026, so the filter
+drops both and `past_context` is `""` for all 47 cells. Verified by reading
+the log and the filter, not inferred from the flag.
+
+So this is a latent gap rather than a live defect: a cell at or near the
+present date would be served another ticker's lessons from whatever else
+had run on the machine. It is deliberately **not** fixed while a batch is in
+flight — changing `pipeline.run` mid-sweep would mean the 47 arms did not
+all run the same pipeline, which is the one thing a batch has to guarantee.
+
+
+### A swap-exhausted host cannot measure the end-to-end tier (2026-10-14)
+
+The first end-to-end run of the derived-deadline tree failed — `1 failed,
+2 passed in 407.18s`, with `StageFailed: session could not be created:
+session.new was sent but not answered within 60.0s`. **It was not the
+change.** Two facts rule it out: the 60 s clock fires inside
+`create_session`, before `sessions.check_tool_budgets` is reachable at all,
+and no `ToolBudgetMismatch` appears anywhere in the output.
+
+What the evidence did say, gathered rather than assumed:
+
+- the daemon's runner pool was at capacity **4/4** with two cascade ids live,
+  tearing slots down `reason=over-capacity` repeatedly;
+- the 5-minute load average was **7.31**;
+- a unit tier run concurrently took **71.41 s** instead of its usual ~6 s;
+- the tier itself took **407 s** against a ~272–294 s baseline;
+- the host: **10714 of 11902 MB used, swap 2047/2047 EXHAUSTED**, 973 MB free,
+  load 11.03. The consumers were another project's benchmark (a 743 MB
+  template-mode runner plus a 608 MB `bench_references_daemon.py --size
+  1000`), our own daemon at 527 MB, **16 runners totalling 3.34 GB**, six
+  `claude` sessions and Keycloak at 372 MB.
+
+Re-run alone on a quiet box: **3 passed in 300.52 s**. So the cause was
+contention, and the arithmetic explains it — this pipeline claims ~5 runner
+slots per concurrent cascade at ~170–200 MB each (#1622 and §4 of CLAUDE.md),
+and a `session.new` confirmation has to wait for a slot that memory cannot
+supply.
+
+**Rule.** The end-to-end tier is not a measurement on a host with no free
+memory. Read a `session.new` timeout there as a host finding, re-run alone,
+and only then suspect the tree. The lesson that cost the time is narrower and
+is mine: do not run a second test tier against a shared daemon whose pool is
+sized for one cascade.
+
+### The sentiment prefetch put a driver package in the daemon's venv (2026-10-17)
+
+**What was wrong.** `ta_cascade` was editable-installed into the SHARED daemon
+venv (`~/.local/share/jaato/venv`, `INSTALLER: pip`, dated 2026-09-18 — before
+the client/daemon split of 2026-10-09). It was the **only non-jaato package
+there**, among seven editable installs, and it pointed at this working tree, so
+the shared daemon's environment depended on this repository's path.
+
+**Why it was there.** `.jaato/scripts/prefetch_sentiment.py` did `from
+ta_cascade import data`, and `explain prefetch` is explicit: *"The script is
+imported into the runner's own interpreter, so a third-party import resolves in
+the DAEMON's environment."*
+
+**Why there is no configuration that fixes it.** `script_imports:
+workspace_venv` (jaato#1644) looks like the escape and is not one. It is a
+`plugin_configs.cli` key — a venv scoped to the `cli` plugin, for the commands
+the model runs, unrelated to a cascade's own venv — and every analyst stage
+here declares `plugins: []`. Its venv is also model-writable by design.
+
+**What the other cascades do**, surveyed across 32 sibling workspaces on this
+host: no workspace sets `script_imports` except `kb-for-coding-patterns-wiki`,
+which uses `workspace_venv: pipeline/venv` for its model's `cli` commands.
+Every other `.jaato/scripts/` file imports **stdlib plus its own neighbours in
+that directory** (`_gate_helpers`, `pricing_rules`, `audit_validator`,
+`_audit`), reached with `sys.path.insert(0, str(Path(__file__).parent))`.
+`prefetch_sentiment.py:29` was the only line in any of them importing a driver
+package. The convention is: local `.venv`, local `.jaato`, no venv inside
+`.jaato`, no workspace-venv setting, and self-contained scripts.
+
+**The fix: the sentiment analyst gets host tools, like the other three.**
+Considered and rejected: a stdlib-only `subprocess` bridge to this venv's
+python (an exec boundary in the runner, and a C extension under the workspace
+needs an exec-mapping grant the base profile does not carry); re-implementing
+the four fetches in the script (duplicates the three-kinds-of-nothing contract
+in a second place); `ToolPlugin` packaging (#10 — still installs our code
+daemon-side). Host tools need nothing of ours in the runner by any route.
+
+What changed: `tools.sentiment_tools` gives the stage `get_company_news`,
+`get_global_news`, `get_stocktwits_messages`, `get_reddit_posts` — the two news
+specs factored into shared builders so the news analyst and this one cannot
+drift; the persona rewritten to call them instead of reading pre-fetched text;
+`prefetch_sentiment.py` deleted; `TA_CASCADE_PREFETCH` removed from all
+thirteen echo profiles (it was each one's only `env:` key, so the block went
+too); and `data.gather_with_deadline` removed, the prefetch having been its
+only caller. The stage's `budget_control` needed no change: all four analysts
+share one ceiling (`turns: 8`, `tool_calls: 60`) and news and fundamentals
+already run four host tools inside it.
+
+**Verified, in this order.** 147 unit tests pass; `validate` holds the
+baseline on all three sets (openrouter_sonnet 3 warn, minimax_m3 3 warn, echo
+2 warn + 13 info, zero errors); the end-to-end tier passed at **292.08 s**
+with the daemon-venv install still present; then `pip uninstall ta-cascade`
+from the daemon venv, a daemon restart so no runner could inherit the old
+`sys.path`, and the tier passed again at **283.11 s**. So the pipeline is
+measured to work with no package of this repository in the daemon's
+environment, which is the claim that matters.
+
+This also retires trap #1 for the sentiment stage: a host tool runs in the
+driver process, where a stalled fetch cannot reach `session.bootstrap`. The
+rule for the future is in CLAUDE.md §4 — a `.jaato/scripts/` file may import
+stdlib and its neighbours, nothing else.
+
+**Not verified:** no live-model run yet. The stage now has to CHOOSE to call
+four tools where it was previously handed the text, and only a real model
+shows whether the persona's instruction is followed. The echo set cannot test
+it — echo emits one canned tool call, which is spent on `signal_completion`.
+
+### The framework declares Python 3.14, and the daemon moved to it the same day (2026-10-17, jaato#1076)
+
+Found on the 2026-10-17 pull (42 commits, `75e366d1` → `612dfc22`). Commit
+`85424765` moved every `pyproject.toml` to `requires-python = ">=3.14,<3.15"`
+— an exact pin, so 3.15 is excluded by declaration too. This host has
+`/usr/bin/python3.12` (3.12.3) and no other interpreter; the daemon venv and
+this client venv are both 3.12.
+
+**Nothing is broken today, and the distinction matters.** The pulled tree
+imports, byte-compiles (`compileall`, rc=0) and answers `-m jaato_server
+--help` under 3.12, so the declaration gates INSTALLATION, not execution. The
+restart that day was therefore safe and needed no reinstall: the packaging
+diff across those 42 commits is `requires-python` and classifiers only — nine
+insertions, nine deletions, five files, no dependency, package or entry-point
+change.
+
+**What it blocks is the next editable reinstall of the daemon venv** — the
+step a packaging change forces after a pull, as jaato#1643 did on 2026-10-14.
+That step will be refused by pip until a 3.14 interpreter exists.
+
+The dependency ecosystem is **not** the obstacle, measured rather than assumed:
+a wheels-only `uv` resolution for 3.14 succeeds both for the daemon's declared
+core (15 deps → 175 packages) and for the heavy tenant extras that were the
+real risk — `numpy 2.5.4`, `scipy 1.18.1`, `onnxruntime 1.31.0`,
+`tokenizers 0.23.3`, `presidio-analyzer 2.2.362`, `spacy 3.8.16`,
+`grpcio 1.84.0`, `pynacl 1.6.2`. Nothing needs a compiler.
+
+What the move actually costs is the venv and its launchers: 225 packages, eight
+editable installs (`jaato-sdk`, `jaato-server`, `jaato-eval`, `jaato-tui`,
+`jaato-premium`, `jaato-client-telegram`, `jaato-m365` from
+`jaato-m365-plugin/src`, and — until today — `ta_cascade`), and one systemd
+user unit, `jaato-tg.service`. `uv` 0.9.26 is on the box and `uv python
+install 3.14` needs no root and no compiler; `apt` offers no 3.13 or 3.14 and
+no deadsnakes source is configured, and a source build would first need
+`libsqlite3-dev`, `libreadline-dev`, `libbz2-dev` and `liblzma-dev`, none of
+which are installed.
+
+**This repository already faces the same wall — measured, not predicted.**
+`jaato-sdk` carries the identical pin, and two newer rcs are already published
+with it. A dry-run install into this 3.12 venv is refused:
+
+```
+ERROR: Ignored the following versions that require a different python version:
+  0.30.0rc21 Requires-Python >=3.14,<3.15; 0.30.0rc22 Requires-Python >=3.14,<3.15
+```
+
+`0.30.0rc20` still installs (dry run: *"Would install
+jaato-sdk-0.30.0rc20"*), so **rc20 is the ceiling for a 3.12 client venv**.
+One consequence to know before acting on it: `jaato-doctor`'s `package
+releases` WARN now reports `0.30.0rc16 → 0.30.0rc21` and prints an install
+command that cannot succeed. The doctor tally moved to **1 fail, 9 warn, 24
+checks** for exactly this reason — that check went quiet on 10-14 when the venv
+came current and is back now. Read the WARN as "a 3.14 interpreter is needed".
+`--ignore-requires-python` only defers the moment the code genuinely needs
+3.14, so it is a stopgap and not the fix.
+
+**RESOLVED for the daemon, the same day.** The operator moved the daemon venv
+to **Python 3.14.2**, taken from `uv`'s own standalone build
+(`~/.local/share/uv/python/cpython-3.14.2-linux-x86_64-gnu`, symlinked at
+`~/.local/bin/python3.14`) — the no-root, no-compiler route. There is still no
+system `python3.14`.
+
+Two things were then worth measuring rather than assuming:
+
+- **`ta_cascade` did not come back.** The rebuilt venv holds six editable
+  installs and ours is not among them (`python -I -c 'import ta_cascade'` →
+  `ModuleNotFoundError`). Had the prefetch still existed, this rebuild would
+  have had to put this repository AND pandas, yfinance and matplotlib into a
+  3.14 venv to keep the sentiment stage working. The retirement above landed
+  hours before it would have cost something.
+- **A 3.12 client drives a 3.14 daemon.** `validate` delegates correctly
+  (`[validated by the daemon at /tmp/jaato.sock (jaato-server 1.3.0) — not
+  this venv]`) and the end-to-end tier passes: **3 passed in 296.14 s**. The
+  two sides share a wire protocol, not an interpreter, which is what the
+  client/daemon split of 2026-10-09 is for — but it is now measured across a
+  two-minor-version gap, which it had never been.
+
+**CLOSED the same day: this venv moved too.** Rebuilt on **Python 3.14.2**
+from the same `uv` build, and the SDK taken to **0.30.0rc22**, the newest on
+TestPyPI. Verified: 147 unit tests; `validate` at baseline on all three sets;
+doctor back to **1 fail, 8 warn, 24 checks** with `package releases` PASSing
+("nothing newer is published") and the claude-code skill refreshed to rc22; the
+end-to-end tier **3 passed in 274.87 s**. The dependency diff against the 3.12
+venv is **exactly one line** — `jaato-sdk==0.30.0rc16` -> `0.30.0rc22` — which
+is the point of the next finding.
+
+What forced the move was the published SDK, not the daemon: a 3.12 venv is
+refused rc21 and later, so rc20 was its ceiling. The daemon's own interpreter
+never required it, as the 296.14 s measurement above shows.
+
+### `--pre` is global, and on a fresh venv it substitutes pre-releases wholesale (2026-10-17)
+
+Found while moving this venv to 3.14. CLAUDE.md §2's documented install —
+`pip install -e ".[dev,board,sweep]" --pre --index-url
+https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/` — is
+correct for the two packages it exists for, and quietly wrong for everything
+else when the venv is EMPTY. `--pre` is not per-package: it licenses a
+pre-release for every requirement, and with TestPyPI as the PRIMARY index pip
+prefers whatever is newest there. Run bare into the new 3.14 venv it installed:
+
+```
+pandas==3.1.0rc0        (3.0.6 on the old venv)
+lxml==7.0.0b1           (6.1.3)
+urllib3==2.8.1.dev23    (2.8.0)
+protobuf==7.37.0rc1     (7.36.2)
+curl_cffi==0.16.4b1     (0.16.3)
+```
+
+plus a dozen stable-but-moved lines. A backtest arm must not quietly run on a
+pandas release candidate, and nothing in the install output says it is doing
+so — the drift is only visible in a freeze diff.
+
+**Why it had not bitten before.** On 2026-10-09 the same command moved exactly
+one line, because it ran against an already-populated venv whose installed
+versions already satisfied every requirement, so pip had nothing to choose.
+The hazard is specific to a fresh venv, which is precisely what an interpreter
+move creates. The existing warning in §2 ("take a `pip freeze` before and
+after and diff it") is what caught it; it was right and it was not enough.
+
+**The fix, and it is deterministic rather than defensive.** pip has no
+per-package `--pre`, so constrain the rest explicitly from the last known-good
+freeze:
+
+```
+grep -E '^[A-Za-z0-9_.-]+==' freeze-before.txt | grep -v '^ta.cascade==' > pins.txt
+PIP_CONSTRAINT=pins.txt .venv/bin/pip install -e ".[dev,board,sweep]" --pre ...
+```
+
+Every one of the 51 pins from the 3.12 venv resolved **wheels-only** on 3.14
+(checked with `uv pip compile --python-version 3.14 --only-binary :all:`
+BEFORE the venv was touched), so the move needed no dependency drift at all —
+and then moving the SDK alone, with the same pins minus its line, left the
+one-line diff above. Recipe now in CLAUDE.md §2.
+
+**One tenant left the daemon, by decision rather than accident:**
+`jaato-tg.service` (the telegram bot) went `inactive (dead)` at 18:20:23 with
+`status=0/SUCCESS` after 2w 3d of uptime, and `jaato_client_telegram` was not
+reinstalled into the 3.14 venv. The operator stopped it deliberately, so this
+is not pending work, and the unit was then `disable`d at the operator's
+instruction (only the `default.target.wants` symlink was removed; the unit file
+is still at `~/.config/systemd/user/jaato-tg.service`, so `systemctl --user
+enable --now jaato-tg.service` brings it back once
+`jaato_client_telegram` is reinstalled into the 3.14 venv). Worth knowing
+because the daemon now serves one fewer long-lived client, which changes what
+competes for runner slots and memory on this box — see 2026-10-14 above, where
+contention alone failed the end-to-end tier.
 
 ## Feature parity with the reference implementation
 

@@ -21,5 +21,3 @@ plugin_configs:
         time_horizon: 3 months
         errors: []
         warnings: []
-env:
-  TA_CASCADE_PREFETCH: 'off'
