@@ -117,30 +117,33 @@ absence of a complaint from pip is not the same evidence.
   says a newer one exists, and after moving, re-run
   `jaato-scaffold integration claude-code --force` — the skill ships with the
   SDK and doctor reports the copy stale by version.
-- **The framework now declares Python 3.14, and this host has only 3.12**
-  (jaato#1076, commit `85424765`, seen on the 2026-10-17 pull): every
-  `pyproject.toml` moved to `requires-python = ">=3.14,<3.15"`, an exact pin.
-  The box has `/usr/bin/python3.12` (3.12.3) and no other interpreter, and both
-  venvs are 3.12. **Nothing is broken today**: the pulled tree imports,
-  byte-compiles (`compileall`) and answers `-m jaato_server --help` under 3.12,
-  so the declaration gates INSTALLATION, not execution. What it blocks is the
-  editable reinstall of the daemon venv — the step a packaging change forces
-  after a pull, as jaato#1643 did on 2026-10-14. So the next such change needs
-  a 3.14 interpreter first. `uv` (0.9.26) is on the box and
-  `uv python install 3.14` needs no root and no compiler; a wheels-only uv
-  resolution for 3.14 succeeds for the daemon's core deps AND for the heavy
-  tenant extras (numpy, scipy, onnxruntime, tokenizers, presidio, grpcio), so
-  the ecosystem is not the obstacle. **The same wall faces THIS venv**: the SDK
-  carries the same pin, so the next published rc cannot be installed into a
-  3.12 client venv — we are held at 0.30.0rc16 until the client moves too.
+- **The daemon runs Python 3.14; this venv is still 3.12, and that is fine**
+  (jaato#1076, commit `85424765`, pulled 2026-10-17). Every framework
+  `pyproject.toml` declares `requires-python = ">=3.14,<3.15"`, an exact pin —
+  3.15 is excluded by declaration too. On 2026-10-17 the operator moved the
+  daemon venv to **Python 3.14.2**, from `uv`'s own standalone build
+  (`~/.local/share/uv/python/cpython-3.14.2-linux-x86_64-gnu`, symlinked at
+  `~/.local/bin/python3.14`); there is still no system `python3.14`, and
+  `/usr/bin/python3.12` (3.12.3) is what a bare `python3` gives you.
+  **A 3.12 client against a 3.14 daemon is MEASURED to work**, not assumed:
+  `validate` delegates fine, and the end-to-end tier passes (3 passed in
+  296.14 s, 2026-10-17). It has to work — the two sides share a wire protocol,
+  not an interpreter, which is the whole point of the split in §2. **So do not
+  "fix" this venv's version because the daemon's moved.**
+  What the pin DOES bind here is the published SDK: it carries the same
+  `>=3.14,<3.15`, so **this 3.12 venv cannot install 0.30.0rc21 or later** —
+  `pip` answers *"Ignored the following versions that require a different
+  python version: 0.30.0rc21 Requires-Python >=3.14,<3.15"*, and **0.30.0rc20
+  is the newest SDK it can hold** (rc16 is installed). `jaato-doctor`'s
+  `package releases` WARN reports a newer rc and prints an install command that
+  cannot succeed; read it as "the client venv would have to move to 3.14
+  first", not as "run this". Moving it is a deliberate step and the interpreter
+  is now available to do it — `uv venv --python 3.14` and the §2 install line.
   `--ignore-requires-python` only defers the moment the code genuinely needs
-  3.14, so it is not the fix. **This is measured, not predicted**: rc21 and
-  rc22 are already published and already refused here — `pip` answers
-  *"Ignored the following versions that require a different python version:
-  0.30.0rc21 Requires-Python >=3.14,<3.15"* — so **0.30.0rc20 is the newest SDK
-  this venv can hold**, and `jaato-doctor`'s `package releases` WARN now prints
-  an install command that cannot succeed. Read that WARN as "a 3.14 interpreter
-  is needed", not as "run this". See `docs/gaps.md`, 2026-10-17.
+  3.14, so it is not the fix. The ecosystem is not an obstacle: a wheels-only
+  `uv` resolution for 3.14 succeeds for the daemon's declared core and for the
+  heavy tenant extras (numpy, scipy, onnxruntime, tokenizers, presidio,
+  grpcio). See `docs/gaps.md`, 2026-10-17.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
   (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
   "client and daemon both resolve jaato_sdk from <path>" while printing OUR

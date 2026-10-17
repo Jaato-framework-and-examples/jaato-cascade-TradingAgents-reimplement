@@ -1952,7 +1952,7 @@ four tools where it was previously handed the text, and only a real model
 shows whether the persona's instruction is followed. The echo set cannot test
 it — echo emits one canned tool call, which is spent on `signal_completion`.
 
-### The framework declares Python 3.14 and this host has only 3.12 (2026-10-17, jaato#1076)
+### The framework declares Python 3.14, and the daemon moved to it the same day (2026-10-17, jaato#1076)
 
 Found on the 2026-10-17 pull (42 commits, `75e366d1` → `612dfc22`). Commit
 `85424765` moved every `pyproject.toml` to `requires-python = ">=3.14,<3.15"`
@@ -2008,9 +2008,38 @@ came current and is back now. Read the WARN as "a 3.14 interpreter is needed".
 `--ignore-requires-python` only defers the moment the code genuinely needs
 3.14, so it is a stopgap and not the fix.
 
-**Open — the interpreter is an operator decision**, not a thing to do quietly:
-it changes the shared daemon for every tenant. Nothing forces it until the
-next packaging change upstream.
+**RESOLVED for the daemon, the same day.** The operator moved the daemon venv
+to **Python 3.14.2**, taken from `uv`'s own standalone build
+(`~/.local/share/uv/python/cpython-3.14.2-linux-x86_64-gnu`, symlinked at
+`~/.local/bin/python3.14`) — the no-root, no-compiler route. There is still no
+system `python3.14`.
+
+Two things were then worth measuring rather than assuming:
+
+- **`ta_cascade` did not come back.** The rebuilt venv holds six editable
+  installs and ours is not among them (`python -I -c 'import ta_cascade'` →
+  `ModuleNotFoundError`). Had the prefetch still existed, this rebuild would
+  have had to put this repository AND pandas, yfinance and matplotlib into a
+  3.14 venv to keep the sentiment stage working. The retirement above landed
+  hours before it would have cost something.
+- **A 3.12 client drives a 3.14 daemon.** `validate` delegates correctly
+  (`[validated by the daemon at /tmp/jaato.sock (jaato-server 1.3.0) — not
+  this venv]`) and the end-to-end tier passes: **3 passed in 296.14 s**. The
+  two sides share a wire protocol, not an interpreter, which is what the
+  client/daemon split of 2026-10-09 is for — but it is now measured across a
+  two-minor-version gap, which it had never been.
+
+**Still open, and narrower than it was:** this client venv is 3.12 and so
+cannot install SDK 0.30.0rc21 or later; rc20 is its ceiling and rc16 is what it
+holds. The interpreter to move it is now on the box, so this is a decision
+rather than a blocker. Doctor's `package releases` WARN will keep reporting a
+newer rc and printing an install command that cannot succeed until then.
+
+**One casualty to be aware of, not ours to fix:** `jaato-tg.service` (the
+telegram bot, a separate tenant) went `inactive (dead)` at 18:20:23 with
+`status=0/SUCCESS` after 2w 3d of uptime, and `jaato_client_telegram` is no
+longer among the venv's editable installs — so it would need reinstalling into
+the 3.14 venv before that unit can start again.
 
 ## Feature parity with the reference implementation
 

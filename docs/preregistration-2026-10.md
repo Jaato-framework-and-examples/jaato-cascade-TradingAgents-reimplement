@@ -881,3 +881,38 @@ tool call, spent on `signal_completion`). Any future batch including the
 sentiment analyst should be read as running a stage whose tool-calling
 behaviour is unverified; the 33 settled AAPL arms did not include it, so the
 existing sample is unaffected.
+
+### 2026-10-17, 18:23 — the daemon moved to Python 3.14.2; the driver did not
+
+The interpreter wall recorded three hours earlier is resolved on the daemon
+side. The operator rebuilt the daemon venv on **Python 3.14.2** from `uv`'s
+standalone build; there is still no system `python3.14`, and this client venv
+remains **3.12.3**.
+
+For the arms, two measurements and one dependency that is now gone:
+
+- **A 3.12 client drives a 3.14 daemon.** End-to-end tier: **3 passed in
+  296.14 s**, and `validate` delegates correctly to `jaato-server 1.3.0` over
+  the socket. An arm's driver therefore runs on a different interpreter from
+  the runners that serve it, by two minor versions, and the wire protocol is
+  the only thing they share. That was the design of the 2026-10-09 split; it is
+  now measured rather than argued.
+- **The rebuild did not pull this repository back in.** `ta_cascade` is absent
+  from the new venv. Had the sentiment prefetch still existed, this rebuild
+  would have had to install this repository plus pandas, yfinance and
+  matplotlib into a 3.14 venv for the stage to work at all — so the retirement
+  recorded above stopped being hygiene and started being load-bearing within
+  hours of landing.
+
+**What it does not change.** No profile, persona, schema, gate, ceiling or data
+function moved, so an arm's determinism is untouched; the 33 settled AAPL arms
+remain comparable. What changed is which interpreter executes the runner tier,
+and the pairing note for any future batch should record the daemon at
+**Python 3.14.2 / jaato-server 1.3.0** against a driver at **3.12.3 with SDK
+0.30.0rc16**.
+
+**Open.** This venv cannot take SDK 0.30.0rc21 or later while it is 3.12 —
+rc20 is its ceiling — so the client's SDK is now pinned by the interpreter
+rather than by choice. The interpreter to move it exists on the box; whether to
+move it before the next batch is an operator decision, and moving it mid-study
+would change the client half of every pairing note.
