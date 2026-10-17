@@ -2090,11 +2090,14 @@ one-line diff above. Recipe now in CLAUDE.md §2.
 `jaato-tg.service` (the telegram bot) went `inactive (dead)` at 18:20:23 with
 `status=0/SUCCESS` after 2w 3d of uptime, and `jaato_client_telegram` was not
 reinstalled into the 3.14 venv. The operator stopped it deliberately, so this
-is not pending work. Worth knowing for two reasons: the daemon now serves one
-fewer long-lived client, which changes what else is competing for runner slots
-and memory on this box (see 2026-10-14 above); and the unit is still
-`enabled`, so it will try to start on the next login and fail on the missing
-import until it is disabled or the package is reinstalled.
+is not pending work, and the unit was then `disable`d at the operator's
+instruction (only the `default.target.wants` symlink was removed; the unit file
+is still at `~/.config/systemd/user/jaato-tg.service`, so `systemctl --user
+enable --now jaato-tg.service` brings it back once
+`jaato_client_telegram` is reinstalled into the 3.14 venv). Worth knowing
+because the daemon now serves one fewer long-lived client, which changes what
+competes for runner slots and memory on this box — see 2026-10-14 above, where
+contention alone failed the end-to-end tier.
 
 ## Feature parity with the reference implementation
 
