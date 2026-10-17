@@ -20,7 +20,7 @@ expected to change.
 | 11 | **`echo` cannot script a multi-turn tool loop** (one call, then text). Driver-level tests cover control flow, journal and processors; the analyst loop is tested against a real model or a recorded provider trace. | low | per-stage echo profiles drive the whole pipeline end to end (`tests/test_pipeline_echo.py`); the analyst tool loop itself still needs a live model or a replay fixture. | done (control flow); the live analyst loop ran on 2026-09-08, see the live-run findings below |
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
-| 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are fetched by the sentiment prefetch alongside company and market news, all four concurrently under one 20 s deadline. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `data.gather_with_deadline`; fixture tests in `tests/test_social.py`. | done |
+| 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are reached by the sentiment analyst's own host tools (`get_stocktwits_messages`, `get_reddit_posts`), alongside company and market news. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `tools.sentiment_tools`; fixture tests in `tests/test_social.py`. Fetched by a persona prefetch until 2026-10-17 — see that date below. | done |
 | 15 | **No budget ceiling on any stage.** jaato-server 0.12.0's validator flags every profile `budget_control_absent`: no stage is bounded on usd, tokens, seconds, tool_calls or turns, so a tool-call loop stops only at the provider bill. `max_turns` was declared per stage and bounded nothing; jaato#1068 removed the key. | medium | `budget_control` in each `_base_<agent>` profile, sized per stage group from measured usage with roughly 4–5× headroom: analysts `tool_calls 60 / usd 1.50 / seconds 600 / turns 8`, debaters `10 / 2.00 / 600 / turns 12`, judges `30 / 1.50 / 480 / turns 6`, the reflector the same with `turns 4`; `abort` at 100%. The `turns` limits are the numbers `max_turns` carried before jaato#1068 removed that key. Limits are per session and MIN-WINS, so a set profile can tighten a ceiling but never raise it. `usd` is OpenRouter's own reported cost per call, not an estimate, and does not advance on the echo set, which reports none. The evidence is thin — dollar figures for two stages from one run — so revisit the numbers once several runs give per-stage cost. An abort fails the run as `StageFailed` naming the stage or debate turn and the daemon's reason, journal kept; before jaato#1007 a capped debater hung the run instead (see the budget-abort findings below). | done |
 
 Status vocabulary: `open` (nothing done), `planned` (design settled, code pending),
@@ -1727,6 +1727,37 @@ forwards every spec key except `handler`, so a `timeout` on each spec in
 number anywhere, but the client SDK moves first) — not the blind lowering this
 entry originally proposed.
 
+**CLOSED HERE (2026-10-14): the deriving one, by operator decision.** The
+client venv moved to `jaato-sdk` 0.30.0rc16 (one line in `pip freeze`, nothing
+substituted) and `TOOL_BUDGET_S` is gone:
+
+- `tools.handler_deadline_s(spec)` asks `jaato_sdk.client_tool_timeout`, the
+  module the DAEMON's registration path also calls, for the budget that spec
+  will be held to, and subtracts `tools.HANDOFF_MARGIN_S`. No budget is
+  written down in this repository, so if the framework's default moves, every
+  handler follows it. The margin — 5 s, covering the result event's trip back
+  — is the only number left, and it is a margin, not a budget.
+- `sessions.check_tool_budgets` compares the derived numbers against what the
+  daemon REPORTS for that session (`session.client.client_tool_timeouts`,
+  protocol 1.39+) and raises `ToolBudgetMismatch` on any disagreement,
+  including a daemon too old to answer. It runs inside `_accounted` after
+  registration and before the stage's first turn — the first moment the
+  answer exists and the last before the model can call a tool — so a
+  disagreement fails the stage instead of being discovered in a dead arm.
+- a tool that needs longer does not get a bigger constant: it declares
+  `timeout` (ms) on its spec, and its deadline follows. `handler_deadline_s`
+  refuses a budget smaller than the margin rather than clamping it.
+
+**What this does and does not buy.** Every handler now fires at 25 s against
+the daemon's 30 s, so a stalled dependency reaches the model as the data
+layer's sentence rather than as a transport error — which is what killed five
+arms. It does NOT make slow data arrive: `data.FINNHUB_TIMEOUT_S` is 20 s with
+one retry, a ~40 s worst case that still exceeds the budget, so a Finnhub
+stall now produces our sentence instead of their error. Making the data arrive
+is a separate sizing decision — either declare `timeout: 50000` on the three
+news specs, or cut the data layer's own retry so the chain fits inside 25 s —
+and it is not taken here.
+
 **What stalled THIS arm is not established.** Lowering the budget would have
 produced six of our own sentences at 25s rather than six transport errors at
 30s; it would not have made the tools answer. Candidates and their standing:
@@ -1819,6 +1850,167 @@ had run on the machine. It is deliberately **not** fixed while a batch is in
 flight — changing `pipeline.run` mid-sweep would mean the 47 arms did not
 all run the same pipeline, which is the one thing a batch has to guarantee.
 
+
+### A swap-exhausted host cannot measure the end-to-end tier (2026-10-14)
+
+The first end-to-end run of the derived-deadline tree failed — `1 failed,
+2 passed in 407.18s`, with `StageFailed: session could not be created:
+session.new was sent but not answered within 60.0s`. **It was not the
+change.** Two facts rule it out: the 60 s clock fires inside
+`create_session`, before `sessions.check_tool_budgets` is reachable at all,
+and no `ToolBudgetMismatch` appears anywhere in the output.
+
+What the evidence did say, gathered rather than assumed:
+
+- the daemon's runner pool was at capacity **4/4** with two cascade ids live,
+  tearing slots down `reason=over-capacity` repeatedly;
+- the 5-minute load average was **7.31**;
+- a unit tier run concurrently took **71.41 s** instead of its usual ~6 s;
+- the tier itself took **407 s** against a ~272–294 s baseline;
+- the host: **10714 of 11902 MB used, swap 2047/2047 EXHAUSTED**, 973 MB free,
+  load 11.03. The consumers were another project's benchmark (a 743 MB
+  template-mode runner plus a 608 MB `bench_references_daemon.py --size
+  1000`), our own daemon at 527 MB, **16 runners totalling 3.34 GB**, six
+  `claude` sessions and Keycloak at 372 MB.
+
+Re-run alone on a quiet box: **3 passed in 300.52 s**. So the cause was
+contention, and the arithmetic explains it — this pipeline claims ~5 runner
+slots per concurrent cascade at ~170–200 MB each (#1622 and §4 of CLAUDE.md),
+and a `session.new` confirmation has to wait for a slot that memory cannot
+supply.
+
+**Rule.** The end-to-end tier is not a measurement on a host with no free
+memory. Read a `session.new` timeout there as a host finding, re-run alone,
+and only then suspect the tree. The lesson that cost the time is narrower and
+is mine: do not run a second test tier against a shared daemon whose pool is
+sized for one cascade.
+
+### The sentiment prefetch put a driver package in the daemon's venv (2026-10-17)
+
+**What was wrong.** `ta_cascade` was editable-installed into the SHARED daemon
+venv (`~/.local/share/jaato/venv`, `INSTALLER: pip`, dated 2026-09-18 — before
+the client/daemon split of 2026-10-09). It was the **only non-jaato package
+there**, among seven editable installs, and it pointed at this working tree, so
+the shared daemon's environment depended on this repository's path.
+
+**Why it was there.** `.jaato/scripts/prefetch_sentiment.py` did `from
+ta_cascade import data`, and `explain prefetch` is explicit: *"The script is
+imported into the runner's own interpreter, so a third-party import resolves in
+the DAEMON's environment."*
+
+**Why there is no configuration that fixes it.** `script_imports:
+workspace_venv` (jaato#1644) looks like the escape and is not one. It is a
+`plugin_configs.cli` key — a venv scoped to the `cli` plugin, for the commands
+the model runs, unrelated to a cascade's own venv — and every analyst stage
+here declares `plugins: []`. Its venv is also model-writable by design.
+
+**What the other cascades do**, surveyed across 32 sibling workspaces on this
+host: no workspace sets `script_imports` except `kb-for-coding-patterns-wiki`,
+which uses `workspace_venv: pipeline/venv` for its model's `cli` commands.
+Every other `.jaato/scripts/` file imports **stdlib plus its own neighbours in
+that directory** (`_gate_helpers`, `pricing_rules`, `audit_validator`,
+`_audit`), reached with `sys.path.insert(0, str(Path(__file__).parent))`.
+`prefetch_sentiment.py:29` was the only line in any of them importing a driver
+package. The convention is: local `.venv`, local `.jaato`, no venv inside
+`.jaato`, no workspace-venv setting, and self-contained scripts.
+
+**The fix: the sentiment analyst gets host tools, like the other three.**
+Considered and rejected: a stdlib-only `subprocess` bridge to this venv's
+python (an exec boundary in the runner, and a C extension under the workspace
+needs an exec-mapping grant the base profile does not carry); re-implementing
+the four fetches in the script (duplicates the three-kinds-of-nothing contract
+in a second place); `ToolPlugin` packaging (#10 — still installs our code
+daemon-side). Host tools need nothing of ours in the runner by any route.
+
+What changed: `tools.sentiment_tools` gives the stage `get_company_news`,
+`get_global_news`, `get_stocktwits_messages`, `get_reddit_posts` — the two news
+specs factored into shared builders so the news analyst and this one cannot
+drift; the persona rewritten to call them instead of reading pre-fetched text;
+`prefetch_sentiment.py` deleted; `TA_CASCADE_PREFETCH` removed from all
+thirteen echo profiles (it was each one's only `env:` key, so the block went
+too); and `data.gather_with_deadline` removed, the prefetch having been its
+only caller. The stage's `budget_control` needed no change: all four analysts
+share one ceiling (`turns: 8`, `tool_calls: 60`) and news and fundamentals
+already run four host tools inside it.
+
+**Verified, in this order.** 147 unit tests pass; `validate` holds the
+baseline on all three sets (openrouter_sonnet 3 warn, minimax_m3 3 warn, echo
+2 warn + 13 info, zero errors); the end-to-end tier passed at **292.08 s**
+with the daemon-venv install still present; then `pip uninstall ta-cascade`
+from the daemon venv, a daemon restart so no runner could inherit the old
+`sys.path`, and the tier passed again at **283.11 s**. So the pipeline is
+measured to work with no package of this repository in the daemon's
+environment, which is the claim that matters.
+
+This also retires trap #1 for the sentiment stage: a host tool runs in the
+driver process, where a stalled fetch cannot reach `session.bootstrap`. The
+rule for the future is in CLAUDE.md §4 — a `.jaato/scripts/` file may import
+stdlib and its neighbours, nothing else.
+
+**Not verified:** no live-model run yet. The stage now has to CHOOSE to call
+four tools where it was previously handed the text, and only a real model
+shows whether the persona's instruction is followed. The echo set cannot test
+it — echo emits one canned tool call, which is spent on `signal_completion`.
+
+### The framework declares Python 3.14 and this host has only 3.12 (2026-10-17, jaato#1076)
+
+Found on the 2026-10-17 pull (42 commits, `75e366d1` → `612dfc22`). Commit
+`85424765` moved every `pyproject.toml` to `requires-python = ">=3.14,<3.15"`
+— an exact pin, so 3.15 is excluded by declaration too. This host has
+`/usr/bin/python3.12` (3.12.3) and no other interpreter; the daemon venv and
+this client venv are both 3.12.
+
+**Nothing is broken today, and the distinction matters.** The pulled tree
+imports, byte-compiles (`compileall`, rc=0) and answers `-m jaato_server
+--help` under 3.12, so the declaration gates INSTALLATION, not execution. The
+restart that day was therefore safe and needed no reinstall: the packaging
+diff across those 42 commits is `requires-python` and classifiers only — nine
+insertions, nine deletions, five files, no dependency, package or entry-point
+change.
+
+**What it blocks is the next editable reinstall of the daemon venv** — the
+step a packaging change forces after a pull, as jaato#1643 did on 2026-10-14.
+That step will be refused by pip until a 3.14 interpreter exists.
+
+The dependency ecosystem is **not** the obstacle, measured rather than assumed:
+a wheels-only `uv` resolution for 3.14 succeeds both for the daemon's declared
+core (15 deps → 175 packages) and for the heavy tenant extras that were the
+real risk — `numpy 2.5.4`, `scipy 1.18.1`, `onnxruntime 1.31.0`,
+`tokenizers 0.23.3`, `presidio-analyzer 2.2.362`, `spacy 3.8.16`,
+`grpcio 1.84.0`, `pynacl 1.6.2`. Nothing needs a compiler.
+
+What the move actually costs is the venv and its launchers: 225 packages, eight
+editable installs (`jaato-sdk`, `jaato-server`, `jaato-eval`, `jaato-tui`,
+`jaato-premium`, `jaato-client-telegram`, `jaato-m365` from
+`jaato-m365-plugin/src`, and — until today — `ta_cascade`), and one systemd
+user unit, `jaato-tg.service`. `uv` 0.9.26 is on the box and `uv python
+install 3.14` needs no root and no compiler; `apt` offers no 3.13 or 3.14 and
+no deadsnakes source is configured, and a source build would first need
+`libsqlite3-dev`, `libreadline-dev`, `libbz2-dev` and `liblzma-dev`, none of
+which are installed.
+
+**This repository already faces the same wall — measured, not predicted.**
+`jaato-sdk` carries the identical pin, and two newer rcs are already published
+with it. A dry-run install into this 3.12 venv is refused:
+
+```
+ERROR: Ignored the following versions that require a different python version:
+  0.30.0rc21 Requires-Python >=3.14,<3.15; 0.30.0rc22 Requires-Python >=3.14,<3.15
+```
+
+`0.30.0rc20` still installs (dry run: *"Would install
+jaato-sdk-0.30.0rc20"*), so **rc20 is the ceiling for a 3.12 client venv**.
+One consequence to know before acting on it: `jaato-doctor`'s `package
+releases` WARN now reports `0.30.0rc16 → 0.30.0rc21` and prints an install
+command that cannot succeed. The doctor tally moved to **1 fail, 9 warn, 24
+checks** for exactly this reason — that check went quiet on 10-14 when the venv
+came current and is back now. Read the WARN as "a 3.14 interpreter is needed".
+`--ignore-requires-python` only defers the moment the code genuinely needs
+3.14, so it is a stopgap and not the fix.
+
+**Open — the interpreter is an operator decision**, not a thing to do quietly:
+it changes the shared daemon for every tenant. Nothing forces it until the
+next packaging change upstream.
 
 ## Feature parity with the reference implementation
 

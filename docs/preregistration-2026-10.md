@@ -776,3 +776,108 @@ sharpens the stakes: the 33 settled AAPL arms ran on `9315a75d`, a build
 carrying both defects, and a re-run would run on one carrying neither. Seven
 of those 33 arms died of exactly these two causes — 2 of the empty-array trap,
 5 of the 30 s clock during the Finnhub outage.
+### 2026-10-14, 23:15 — `TOOL_BUDGET_S` is gone: the handler deadline is derived
+
+Of the two shapes the 22:50 record left open for jaato#1625, the operator chose
+the deriving one. The client venv moved `jaato-sdk` 0.30.0rc6 -> 0.30.0rc16 —
+one line in `pip freeze`, nothing substituted, which is worth checking because
+TestPyPI is the PRIMARY index and may shadow any dependency — and the constant
+is gone:
+
+- `tools.handler_deadline_s(spec)` asks `jaato_sdk.client_tool_timeout` (the
+  module the daemon's own registration path calls) for the budget that spec
+  will be held to, and subtracts `tools.HANDOFF_MARGIN_S`. **No budget is
+  written down in this repository any more**; if the framework's default moves,
+  every handler follows it.
+- `sessions.check_tool_budgets` compares the derived numbers against what the
+  daemon REPORTS for that session (`client.client_tool_timeouts`, protocol
+  1.39+) and raises `ToolBudgetMismatch` on disagreement — including a daemon
+  too old to answer. It runs after registration and before the stage's first
+  turn: the first moment the answer exists, the last before the model can call
+  a tool.
+- 8 new unit tests (146 total, from 138); end-to-end tier: 3 passed in 300.52 s, re-run alone after a first attempt died of host contention (`docs/gaps.md`, 2026-10-14).
+
+**What it changes for the arms.** Every handler now fires at 25.0 s against
+the daemon's 30.0 s, so the third batch's five-arm failure mode — the model
+reading `{"error": "Client tool get_company_news timed out after 30.0s"}`
+where this repository's contract is a sentence — cannot recur in that form.
+It does **not** make slow data arrive: `data.FINNHUB_TIMEOUT_S` is 20 s with
+one retry, so a stalled Finnhub still exceeds the budget and now yields our
+`DATA_UNAVAILABLE` sentence instead of their error. Whether to raise the three
+news specs' budget (`timeout: 50000`) or cut the data layer's retry so the
+chain fits inside 25 s is a sizing decision, still open, deliberately not
+taken here.
+
+**A third gap closed by the same move: jaato#1610** (closed upstream
+2026-10-14 06:07). `jaato-doctor`'s `jaato_sdk checkout` check no longer
+PASSes while comparing our site-packages with itself; it WARNs that the
+daemon resolves the SDK from its own environment and *"client/daemon checkout
+skew is unchecked"*. So every pairing note in this document that says no
+doctor check can tell should now be read as: doctor says so itself, and the
+hand-check is still what resolves it. The tally is unchanged at 1 fail / 8
+warn / 24 checks, but its composition moved — `package releases` went quiet as
+the venv came current, and this WARN arrived in its place.
+
+**Consequence for the sample.** The driver that runs from here is not the one
+the 33 settled AAPL arms ran: a derived deadline on top of `976c3773`'s two
+fixes. Three of the four things that cost those arms — the empty-array trap,
+the raw transport error, and the inability to tell client/daemon skew — are
+addressed above the arm level. The voiding question is unchanged in kind, but
+every new piece of evidence points the same way.
+### 2026-10-17, 17:33 — the framework moved to 612dfc22, and the driver left the daemon's venv
+
+Two changes, one of them not a framework move at all.
+
+**The move.** `75e366d1` -> `612dfc22`, 42 commits. The tree was already at
+`75e366d1`, not the `976c3773` the running daemon was loaded from on 10-14, so
+a third party had pulled twice in between: with editable installs, every runner
+spawned in that window imported code the daemon process had never loaded. The
+restart is what makes daemon and runners one build again.
+
+Pre/post: no editable reinstall was needed (the packaging diff across the 42
+commits is `requires-python` and classifiers only — nine lines in five files,
+no dependency, package or entry-point change). `--stop` reaped all three pool
+runners and removed both the pid file and the socket, which the 10-14 stop had
+not done. Restart: socket bound in 2 s, template ready, 2 pool slots. The
+`jaato_client_telegram` tenant (17 days up, its own systemd unit) survived and
+reconnected itself. Health checks were skipped at the operator's instruction.
+
+**A wall arrived with this move, and it is not ours to work around.**
+jaato#1076 (`85424765`) declared `requires-python = ">=3.14,<3.15"` across
+every package, and this host has only Python 3.12.3. The pulled tree still
+imports, byte-compiles and runs under 3.12, so the declaration gates
+installation, not execution — but the next packaging change that forces an
+editable reinstall of the daemon venv will be refused by pip, and the SDK
+carries the same pin, so this venv cannot take the next published rc either.
+Full measurement, including a wheels-only 3.14 resolution that succeeds for
+every dependency, in `docs/gaps.md`, 2026-10-17. **Open, and an operator
+decision**: it changes a daemon shared by every tenant on the box.
+
+**The driver left the daemon's environment.** `ta_cascade` had been
+editable-installed into the shared daemon venv since 2026-09-18 — the only
+non-jaato package there — because the sentiment analyst's persona prefetch ran
+inside the runner and imported it. The sentiment analyst now uses host tools
+like the other three analysts, the prefetch script and its env switch are gone,
+and `pip uninstall ta-cascade` has been run against the daemon venv.
+
+Verified in order: 147 unit tests; `validate` at baseline on all three sets,
+zero errors; end-to-end **3 passed in 292.08 s** with the install still
+present; then the uninstall, a daemon restart so no runner could inherit the
+old `sys.path`, and end-to-end again, **3 passed in 283.11 s**. The 283 s run
+is the one that matters: the pipeline is measured to work with no package of
+this repository in the daemon's environment.
+
+**What it changes for the arms.** Nothing about an arm's determinism — the four
+sources, their windows and their three-kinds-of-nothing sentences are
+unchanged; only who calls them moved, from session-prep to the model's own tool
+loop in the driver process. It does change what an arm DEPENDS on: a sweep no
+longer requires the daemon's venv to carry this repository, which is the
+condition that made the client/daemon split of 2026-10-09 incomplete.
+
+**Not yet measured, and it bears on the sample.** No live-model run has
+exercised the new sentiment stage. The stage must now choose to call four tools
+where it was previously handed the text, and echo cannot test that (one canned
+tool call, spent on `signal_completion`). Any future batch including the
+sentiment analyst should be read as running a stage whose tool-calling
+behaviour is unverified; the 33 settled AAPL arms did not include it, so the
+existing sample is unaffected.

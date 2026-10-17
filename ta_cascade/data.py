@@ -866,24 +866,3 @@ def reddit_posts(symbol: str, start_date: str, end_date: str, as_of: str,
                 f"this is not an absence of discussion. Do not infer sentiment from it.")
     head = f"# Reddit {query}: {found} in-window posts across {', '.join('r/' + s for s in subreddits)}"
     return head + "\n" + "\n\n".join(blocks)
-
-
-def gather_with_deadline(seconds: float, jobs: Dict[str, Tuple]) -> Dict[str, str]:
-    """Run ``{name: (fn, *args)}`` concurrently; each result is a string, and
-    a job still running at the deadline yields an UNAVAILABLE sentence."""
-    import concurrent.futures as cf
-    ex = cf.ThreadPoolExecutor(max_workers=max(1, len(jobs)))
-    futures = {name: ex.submit(job[0], *job[1:]) for name, job in jobs.items()}
-    out: Dict[str, str] = {}
-    try:
-        for name, fut in futures.items():
-            try:
-                out[name] = fut.result(timeout=seconds)
-            except cf.TimeoutError:
-                out[name] = (f"{UNAVAILABLE}: {name} did not answer within {seconds:.0f}s. "
-                             f"Do not estimate or invent these values.")
-            except Exception as exc:  # noqa: BLE001
-                out[name] = _unavailable(name, exc)
-    finally:
-        ex.shutdown(wait=False)
-    return out

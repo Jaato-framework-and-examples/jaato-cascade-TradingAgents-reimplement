@@ -18,5 +18,3 @@ plugin_configs:
         lesson: 'echo: the call held; keep sizing modest around events.'
         errors: []
         warnings: []
-env:
-  TA_CASCADE_PREFETCH: 'off'
