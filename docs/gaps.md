@@ -17,7 +17,7 @@ expected to change.
 | 8 | **Licence — only for what is copied.** This repository is a *reimplementation*: nothing from TradingAgents is copied verbatim, so Apache-2.0 attaches to nothing here. The architecture is an idea; the paper is cited as a courtesy. jaato's BUSL-1.1 governs redistribution of the port itself. Not legal advice. | note | keep it a reimplementation: write personas, schemas, data layer and decision log fresh. | policy |
 | 9 | **`mcp` version mismatch in the dev venv** produces a harmless traceback on every `jaato-scaffold` call. | none | pin `mcp` when the daemon path is used. | open |
 | 10 | **Host tools are attach-bound.** They live in the driver process; a cold session cannot use them until a client attaches (`session.wake` → `DEFERRED`). | low in-process; medium for daemon deployments | a `ToolPlugin` packaging of the data layer for daemon deployments (Phase 3). | open |
-| 11 | **`echo` cannot script a multi-turn tool loop** (one call, then text). Driver-level tests cover control flow, journal and processors; the analyst loop is tested against a real model or a recorded provider trace. | low | per-stage echo profiles drive the whole pipeline end to end (`tests/test_pipeline_echo.py`); the analyst tool loop itself still needs a live model or a replay fixture. | done (control flow); the live analyst loop ran on 2026-09-08, see the live-run findings below |
+| 11 | **`echo` cannot script a multi-turn tool loop** (one call, then text). Driver-level tests cover control flow, journal and processors; the analyst loop is tested against a real model or a recorded provider trace. | low | per-stage echo profiles drive the whole pipeline end to end (`tests/test_pipeline_echo.py`); the analyst tool loop itself still needs a live model or a replay fixture. | done (control flow); the live analyst loop ran on 2026-09-08 and the sentiment analyst's four host tools on 2026-10-17, both below |
 | 12 | **No embedding memory in the free jaato package.** Irrelevant to parity; a future "similar past situations" feature needs a `jaato.embedding` provider or an external store surfaced through a prefetch or host tool. | none for parity | out of scope. | deferred |
 | 13 | **The in-process facade honours a subset of the profile contract.** `InProcessClient` resolves a named profile to `model`, `provider`, `plugins`, `plugin_configs`, `system_instructions`, `completion_payload_schema` and `suppress_base_instructions` only (`jaato_embedded/client.py:110-142`); `completion_processors`, `max_turns`, `spawn_payload_schema` and `budget_control` are not applied, so the gates this pipeline relies on would silently not run. Found while starting the implementation; a jaato-side finding worth an issue. | medium if in-process were used | the reimplementation uses the daemon (IPC) transport, where the whole contract applies. Decision recorded in assessment §4.1. | accepted (daemon transport) |
 | 14 | **Social sources.** StockTwits (public symbol stream, no key; the Jentic OpenAPI document describes it) and Reddit (subreddit Atom search feeds; the JSON endpoint is blocked for anonymous clients) are reached by the sentiment analyst's own host tools (`get_stocktwits_messages`, `get_reddit_posts`), alongside company and market news. A failed fetch reads as unavailable, an empty window as quiet — never confused. The StockTwits public stream serves recent messages only, so historical runs get the quiet sentence. | low | `data.stocktwits_messages`, `data.reddit_posts`, `tools.sentiment_tools`; fixture tests in `tests/test_social.py`. Fetched by a persona prefetch until 2026-10-17 — see that date below. | done |
@@ -2098,6 +2098,60 @@ enable --now jaato-tg.service` brings it back once
 because the daemon now serves one fewer long-lived client, which changes what
 competes for runner slots and memory on this box — see 2026-10-14 above, where
 contention alone failed the end-to-end tier.
+
+### The sentiment analyst calls its four tools, measured (2026-10-17)
+
+`analyze NVDA 2026-10-17 --analysts sentiment -v` on the `minimax_m3` set
+against the shared daemon at `ec64c5b7`; exit 0, ten sessions, 40 tool calls,
+179.5 session-seconds. This is the evidence the host-tool switch earlier the
+same day left owing: the stage now has to CHOOSE to call what the prefetch
+used to hand it, and echo cannot test that — it scripts one canned tool call
+and that one is spent on `signal_completion`.
+
+- **All four, in the persona's order, in one turn.** The daemon's ledger for
+  the session reports `used.tool_calls: 5.0` — the four sources plus
+  `signal_completion` — with `turns: 1`, `nudges_fired_total: 0` and
+  `reason: natural`; the payload's `tools_used` names
+  `get_stocktwits_messages`, `get_reddit_posts`, `get_company_news`,
+  `get_global_news`. Both halves matter: `tools_used` is the model's prose
+  about itself, and `used.tool_calls` is the daemon's own count. They agree.
+- **The derived handler deadline was verified live for the first time.**
+  `sessions.check_tool_budgets` raised nothing, so the daemon reported, for
+  each of the four specs, exactly the budget `tools.handler_deadline_s`
+  derived from `jaato_sdk.client_tool_timeout` (protocol 1.39, SDK
+  0.30.0rc22, both sides on 3.14.2). Until this run that path had only ever
+  been exercised against the echo set.
+- **Three kinds of nothing survived the trip into the model.** StockTwits
+  answered 403 (trap #10, unchanged since 2026-09-23) and two of three Reddit
+  feeds failed. The report declares StockTwits `DATA_UNAVAILABLE` and writes
+  that the tally "cannot be computed; do not infer crowd labels from
+  silence", files all four observations in `warnings[]`, keeps `errors[]`
+  empty, and then builds the mood from the 5 r/wallstreetbets posts and the
+  50 + 50 articles it did get — naming the thinness as the reason its
+  confidence is medium. A stage that cannot see is not a stage that invents.
+- **The default window is the one the persona promises.** The report's header
+  reads "Window 2026-10-10 to 2026-10-17", the seven days `_week_before`
+  computes, and the model raised `limit` to the specs' maximum of 50 on both
+  news tools rather than taking the default of 20. The closures' as-of
+  clamping is doing the dating, not the model.
+- **Cost is the unpriced state, not zero.** `budget.used.usd` is 0.0 for all
+  ten sessions because the native minimax provider reports no cost, so what
+  bounds a stage there is the `seconds` / `tool_calls` ceiling: this one
+  spent 38.6 s of 600 and 5 tool calls of 60, `fraction_used` 0.125. Never
+  render that as $0.00.
+- **A downstream refusal worth keeping.** With only the sentiment analyst
+  selected, the trader declined to place any price level — "no market report
+  was provided in this prompt, so the verified market snapshot is not
+  available … entry_price, stop_loss and position_sizing are therefore
+  null" — and said in `warnings[]` that the sentiment report's quoted $214
+  reference price is context, not the verified snapshot. The stop-placement
+  rule held against a missing input instead of borrowing a number that was
+  lying there.
+
+What this does NOT measure: the openrouter_sonnet set, where the same persona
+has never driven these four tools, and any date whose news window Finnhub
+cannot serve. The run used today's date, so company news was served natively
+and the general feed's few days covered the window.
 
 ## Feature parity with the reference implementation
 

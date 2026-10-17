@@ -668,9 +668,16 @@ for `rules_read`.
   and finishes. `data.instrument_context` and `data.return_after` are
   monkeypatched so the driver never touches the network either. Stops the
   daemon in teardown.
-- What echo cannot test: an analyst's real tool loop. That needs a live
-  model (or a recorded provider trace via the profile `trace:` block) and
-  has **not been run yet**.
+- What echo cannot test: an analyst's real tool loop. It scripts ONE canned
+  tool call and that one is spent on `signal_completion`, so a stage that
+  must call several tools before it writes can only be measured against a
+  live model (or a recorded provider trace via the profile `trace:` block).
+  Both analysts that have been measured that way passed: the market analyst
+  on 2026-09-08, and the sentiment analyst's four host tools on 2026-10-17 —
+  five tool calls in one turn, no nudges, the payload's `tools_used` matching
+  the daemon's own `used.tool_calls`. The news and fundamentals analysts have
+  not been run that way, and neither set has been measured on
+  `openrouter_sonnet` since the sources moved to host tools.
 
 ---
 
