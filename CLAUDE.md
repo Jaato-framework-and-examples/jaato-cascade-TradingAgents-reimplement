@@ -538,8 +538,18 @@ for `rules_read`.
    an operator), pass `auto_start=False` (`RunConfig.auto_start`).
 4. **Unix socket paths are limited to ~104 characters.** The test fixture
    picks a short temp dir for the private socket.
-5. **`--stop` needs `--pid-file` and `--ipc-socket`** to find a daemon
-   started with a custom pid file.
+5. **`--stop` finds a daemon by its SOCKET; the pid file is the fast path,
+   not the requirement.** `check_running` reads the pid file first and falls
+   back to `_pid_on_socket`, which resolves the owner of the socket and
+   verifies its cmdline — so
+   `--stop --pid-file /tmp/jaato.pid --ipc-socket /tmp/jaato.sock` stops a
+   daemon whose pid file has been deleted (measured twice, 2026-10-19 and
+   2026-10-20). Pass BOTH flags for a daemon on custom paths. The danger is
+   the other way round: a default pid file naming a LIVE but unrelated daemon
+   is believed and killed, because a daemon started on a private socket
+   without `--pid-file` writes ours and deletes it on exit (jaato#1764;
+   `docs/gaps.md`, 2026-10-20). On this shared host, read the pid back from
+   `ps` before trusting it.
 6. **ERROR lines in the daemon log that are noise here:** an `mcp` package
    version traceback (`'types.UnionType' object has no attribute
    'model_validate_json'`) and `file_edit` refusing to initialise without a
