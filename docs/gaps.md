@@ -2153,6 +2153,68 @@ has never driven these four tools, and any date whose news window Finnhub
 cannot serve. The run used today's date, so company news was served natively
 and the general feed's few days covered the window.
 
+### A neighbour's daemon deletes the shared pid file, and `--stop` does not need it (2026-10-20, jaato#1764)
+
+`/tmp/jaato.pid` was missing on two consecutive days while the daemon it names
+was alive and serving — pid 2382642 on 10-19, pid 3912123 on 10-20, each
+verified by `ps` and by a delegated `validate` answering as
+`jaato-server 1.3.0`. On 10-19 this was reported as "no evidence yet for the
+cause", which was the honest answer then. It recurred, so it could be measured
+instead of guessed.
+
+The daemon writes the file correctly. On a controlled restart it appears at
+once: `-rw-rw-r-- 7 2026-10-20 10:26:00.014595492 /tmp/jaato.pid`. No
+`Could not write PID file` or `Could not remove PID file` warning exists in any
+of the six `/tmp/jaato.log*` rotations. So the write works and something else
+removes it afterwards.
+
+The sibling default file is where it becomes visible. While our daemon held
+`/tmp/jaato.sock`, `/tmp/jaato.config.json` — written 09:20 that morning —
+named `/tmp/jaato-conformance-nzov3ws_/d.sock`, `.../d.pid` and
+`.../daemon.log`: a conformance-fixture daemon on a private socket had written
+the SHARED default path. `--restart` reads that file (`load_config()` with no
+argument), so it would have restarted our daemon onto a dead fixture's
+identity.
+
+The mechanism is that the daemon's auxiliary paths are independent defaults,
+not derived from `--ipc-socket` (`DEFAULT_PID_FILE`, `DEFAULT_CONFIG_FILE`),
+written at start and **deleted at stop** (`_remove_pid`). Any daemon started on
+a private socket without the matching flags therefore writes, and then
+deletes, the files belonging to whoever is using the defaults. The SDK's own
+autostart is exactly such a caller: it passes `--ipc-socket` and `--daemon`
+and nothing else. Filed as **jaato#1764** (bug, P2), with the fix argued
+daemon-side — a private socket should imply a private identity — rather than
+SDK-side, which would leave the trap armed for the next caller.
+
+**What is still not evidenced: which process deleted it.** The autostart
+banner prints to the client's stdout, not the daemon log, and nothing logs a
+pid-file path. The culprit is identified by code path plus the config-file
+evidence, not by a captured event. This repository is a victim and never a
+cause: it runs `auto_start=False`.
+
+What it costs us, from `check_running` being pid-file-first: a default pid file
+naming a live but unrelated daemon is believed, so `jaato-server --stop` can
+SIGTERM that one and reap its runners while the daemon we meant survives. On a
+shared host, read the pid back from `ps` before trusting it.
+
+And the correction that matters for our own procedure: **`--stop` does not
+need the pid file.** `check_running` falls back to `_pid_on_socket`, which
+resolves the daemon from the socket and verifies the owner's cmdline, so
+`--stop --pid-file /tmp/jaato.pid --ipc-socket /tmp/jaato.sock` stopped both
+pid-file-less daemons cleanly (5 orphan runners reaped on 10-19, 5 again on
+10-20). Rewriting the pid file by hand from the ps-verified pid, as was done on
+10-19, was unnecessary. Trap #5 in `CLAUDE.md` is corrected accordingly.
+
+One more thing the day taught about restarts. The shared `jaato/` checkout is
+not ours: on 10-20 it sat on another agent's branch, one cherry-picked commit
+ahead of `origin/main` and three behind, so `git pull --ff-only` refused. The
+daemon's editable install follows the WORKING TREE, so a restart after someone
+else's pull is what closes the skew — on 10-20 the daemon had loaded
+`a8dc4dd8` while the tree had moved 34 commits to `97828dc0`, and every newly
+spawned runner was already importing code the daemon core did not have. Moving
+that tree to `main` is the operator's call, not ours, and it is lossless only
+while the other branch's ref survives: that commit existed on no remote.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
