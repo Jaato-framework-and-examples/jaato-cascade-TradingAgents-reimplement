@@ -2215,6 +2215,48 @@ spawned runner was already importing code the daemon core did not have. Moving
 that tree to `main` is the operator's call, not ours, and it is lossless only
 while the other branch's ref survives: that commit existed on no remote.
 
+### jaato#1764 is fixed: the pid file follows the socket (2026-10-21, jaato#1785)
+
+An amendment to yesterday's finding, which should not be read as current.
+jaato#1764 was closed by PR #1785 in the pull of 2026-10-21, with the fix
+daemon-side as argued rather than a patch to the SDK's autostart alone. A new
+module, `jaato_sdk.daemon_paths`, is the single rule for where a daemon keeps
+its pid file, restart config and log, and the server's `__main__`, the SDK's
+autostart and `jaato-doctor` all read it, so the three cannot disagree about
+which file belongs to which daemon. The conformance fixture's workaround — the
+`--pid-file` it had to pass to avoid corrupting a neighbour — was dropped in
+the same PR.
+
+Checked against the two sockets this repository actually observed:
+
+| socket | derived pid / config / log |
+|---|---|
+| `/tmp/jaato.sock` (ours) | `/tmp/jaato.pid`, `.config.json`, `.log` — the legacy trio, so nothing migrates |
+| `/tmp/jaato-1.3.0rc28.sock` (the clobberer of 10-20) | its own private trio |
+
+Explicit `--pid-file` / `--config-file` / `--log-file` still win. Our restart
+command passes them, so our procedure did not change — what changed is that it
+no longer needs to.
+
+Worth recording about the evidence, because it decided the fix: the config
+file was the half that could be shown rather than inferred. The pid file's
+disappearance left no trace of its cause, and the issue said so; the clobbered
+`/tmp/jaato.config.json` named the offending daemon's own socket, which is what
+turned "something deletes our pid file" into a mechanism. It then reproduced a
+second time the same day from a different caller — a version-named daemon on
+`/tmp/jaato-1.3.0rc28.sock` that had passed `--pid-file` but not
+`--config-file`, so only the config half fired.
+
+The client venv moved the same day: `jaato-sdk` 0.30.0rc22 -> rc26,
+`jaato-eval` 0.3.5rc1 -> rc2, and the freeze diff was exactly those two lines
+of 52. A detail the §2 recipe did not say and now does: `pip install -e .`
+does not move a dependency pip already considers satisfied, so the first
+constrained install reinstalled only `ta-cascade` and moved nothing. The two
+packages had to be named explicitly, still under the same `PIP_CONSTRAINT`.
+`jaato-doctor` came back to 1 fail, 8 warn, 24 checks, and a `validate` from
+the rc26 client still delegates to the 1.3.0 daemon — the two sides share a
+wire protocol, not a build.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

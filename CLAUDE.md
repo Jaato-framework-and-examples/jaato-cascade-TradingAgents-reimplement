@@ -151,7 +151,15 @@ absence of a complaint from pip is not the same evidence.
   3.12 venv is refused 0.30.0rc21 and later (*"Ignored the following versions
   that require a different python version"*), so rc20 was its ceiling. On 3.14
   the SDK moved rc16 -> **rc22**, the newest on TestPyPI, and the dependency
-  diff against the 3.12 venv is exactly that one line. `--ignore-requires-python`
+  diff against the 3.12 venv is exactly that one line. On **2026-10-21** it
+  moved rc22 -> **rc26** (and `jaato-eval` 0.3.5rc1 -> rc2) by the constrained
+  recipe above: `pip install -e .` alone does NOT move an already-satisfied
+  dependency, so the two were named explicitly under the same
+  `PIP_CONSTRAINT`, and the freeze diff was exactly those two lines out of 52.
+  `jaato-doctor` returned to **1 fail, 8 warn, 24 checks** afterwards — the
+  two extra warns beforehand were `package releases` and a skill copy stale by
+  version, both cleared by the move plus
+  `jaato-scaffold integration claude-code --force`. `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
   never the fix. See `docs/gaps.md`, 2026-10-17.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
@@ -544,12 +552,17 @@ for `rules_read`.
    verifies its cmdline — so
    `--stop --pid-file /tmp/jaato.pid --ipc-socket /tmp/jaato.sock` stops a
    daemon whose pid file has been deleted (measured twice, 2026-10-19 and
-   2026-10-20). Pass BOTH flags for a daemon on custom paths. The danger is
-   the other way round: a default pid file naming a LIVE but unrelated daemon
-   is believed and killed, because a daemon started on a private socket
-   without `--pid-file` writes ours and deletes it on exit (jaato#1764;
-   `docs/gaps.md`, 2026-10-20). On this shared host, read the pid back from
-   `ps` before trusting it.
+   2026-10-20). Pass BOTH flags for a daemon on custom paths.
+   **The hazard that made this matter is FIXED** (jaato#1764, PR #1785, pulled
+   2026-10-21): the pid file, restart config and log are now DERIVED from the
+   socket by one module, `jaato_sdk.daemon_paths`, which the server, the SDK's
+   autostart and `jaato-doctor` all read — so a daemon on a private socket can
+   no longer write or delete ours. `/tmp/jaato.sock` still maps to
+   `/tmp/jaato.pid`, so nothing here changed. Explicit flags still win. Before
+   that fix, a default pid file could name a LIVE but unrelated daemon and
+   `--stop` would kill it; against a daemon built before #1785 — the version
+   string does not move, so check the build, not `1.3.0` — read the pid back
+   from `ps` before trusting it (`docs/gaps.md`, 2026-10-20 and 2026-10-21).
 6. **ERROR lines in the daemon log that are noise here:** an `mcp` package
    version traceback (`'types.UnionType' object has no attribute
    'model_validate_json'`) and `file_edit` refusing to initialise without a
