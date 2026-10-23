@@ -4,6 +4,14 @@
 name: _base_market_analyst
 description: 'market analyst stage: data tools in, a typed report out.'
 plugins: []
+# No client watches this stage, so the workspace monitor is dead weight:
+# it costs a baseline walk and one watch per kept directory PER SESSION
+# (jaato#1811, surfaced by validate as workspace_monitor_unwatched).  This
+# pipeline opens ~11 sessions a run and a sweep multiplies that.  Nothing
+# here reads a Files panel: the driver's observer consumes cascade events
+# only, and a gate's rendered section is written by the daemon from the
+# `output:` template, not discovered by watching the tree.
+workspace_monitor: false
 budget_control:
   # Analyst: measured 13 tool calls (3 host tools, 9 prepare_completion, 1 signal) and 64-90 s.
   # Sizing and mechanics: docs/gaps.md #15.

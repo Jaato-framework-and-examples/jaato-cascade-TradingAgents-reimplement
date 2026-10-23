@@ -2257,6 +2257,79 @@ packages had to be named explicitly, still under the same `PIP_CONSTRAINT`.
 the rc26 client still delegates to the 1.3.0 daemon — the two sides share a
 wire protocol, not a build.
 
+### Every session is confined now, and the client caught up to the gates (2026-10-23, jaato#1808/#1809/#1777/#1811)
+
+Three things landed together, and the end-to-end tier measured all of them at
+once: **3 passed in 162.63 s**, the first run of that tier since 2026-10-14.
+
+**Confinement stopped being opt-in.** Protocol 1.46 confines any
+client-driven IPC session a daemon with a kernel backend was not told to leave
+unconfined. The surprise is that our client never says anything either way and
+still gets it: a pre-1.46 SDK sends `apparmor: false` by DEFAULT, and
+`jaato_sdk.confinement_option.client_signal` returns
+`True if legacy is True else None` — so `false` is "not said", not an opt-out,
+and the daemon's default applies. That was worth settling BEFORE restarting,
+because this daemon warns at every startup that the runner's own interpreter
+(`~/.local/share/uv/python/cpython-3.14.2-.../bin/python3.14`, which is what
+`venv/bin/python` resolves to) sits "inside the workspace root /home/apanoia"
+and is "not granting it (model-writable)" — an ungranted interpreter under a
+new mandatory profile is a plausible way for every session on the host to stop
+bootstrapping.
+
+It does not. One probed session through `open_stage` came back
+`[confinement] confined by default (apparmor)`, `confined=True`,
+`profile applied`, `enforced=True`; then the whole tier ran the pipeline twice
+plus the resume and budget tests with `confined=True` on every session. The
+measured cost is **~505 ms per session** of provisioning, 501.6 ms of it the
+AppArmor parser — a per-SESSION cost, so a sweep pays it ~11 times per run,
+not once. Still unmeasured: a confined session making a real HTTPS call to a
+provider. Echo needs no network, and the CA-bundle grants that make TLS work
+under confinement (jaato#1814) arrived in this same payload, which is itself a
+sign that confinement broke TLS for someone. `JAATO_IPC_CONFINE_DEFAULT=off`
+is the host-scoped escape, announced at WARNING; it was not needed.
+
+**The client caught up to the completion gates.** `jaato-sdk` 0.30.0rc26 ->
+rc28 (`jaato-eval` rc2 -> rc3), freeze diff exactly those two lines of 52.
+rc26 RAISED `ValueError: Unknown event type` on `completion.processor_verdict`
+and `completion.nudge_fired` (jaato#1777) — bounded, because
+`IPCClient._drain_loop` logs one line and continues, but one line per gated
+stage per run, in OUR client's log, where trap #6 only ever inventoried noise
+in the DAEMON's. rc28 deserializes both into typed events, and a probe that
+drove one gated echo stage saw
+`COMPLETION_PROCESSOR_VERDICT analyst_report accepted errors=0 refusals=0`
+arrive. That is new observability, not just quieter logs: a `NudgeExhausted`
+dead-end (§4, what echo cannot test) was until now diagnosable only by
+inference.
+
+**Seven stages stopped paying for a Files panel nobody reads.** The daemon's
+own `validate` began reporting `workspace_monitor_unwatched` (jaato#1811) for
+every concrete, completion-gated profile with no tool plugins: the four
+analysts, `research_manager`, `portfolio_manager` and `reflector` each kept the
+workspace monitor, costing a baseline walk and one watch per kept directory per
+session. They now declare `workspace_monitor: false` on their `_base_<agent>`,
+which cleared all seven advisories (workspace info 7 -> 0 on both real sets;
+3 warn / 3 warn / 2 warn + 13 info and zero errors is unchanged). The tier got
+faster in the same step — 274.87 s on 2026-10-17 to 162.63 s — but the cause is
+NOT isolated: the same payload also took the monitor off the session-create
+path framework-side, so this profile change is belt-and-braces on top of a
+framework fix, and nothing here measures the two apart.
+
+A note on introspection, which §2 calls the source of truth: it was BEHIND the
+daemon here. `explain profile` on rc28 has no mention of `workspace_monitor` at
+all — the scaffold surfacing for it is in the checkout the daemon runs but not
+in the published rc. What named the key, its value and its placement was the
+daemon's own `validate` output, and the field itself
+(`Optional[bool]`, default `None`, top-level on the profile). When the client's
+snapshot and the daemon disagree, the daemon is the one that reads the profile.
+
+**Carried, not closed:** the daemon venv holds `anthropic` 1.15.0 while the
+tree now pins `anthropic>=0.40.0,<1` (jaato#1800: the 1.x SDK moved to httpx2
+and client construction fails with the httpx client the tree passes). It is
+pre-existing — installed 2026-10-17 18:21, three daemons have run on it — and
+it does not touch this repository, which uses OpenRouter and minimax. Fixing
+it means reinstalling inside a venv twelve other workspaces share, so it is
+the venv owner's call, not a client's.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

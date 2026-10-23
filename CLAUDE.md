@@ -159,9 +159,17 @@ absence of a complaint from pip is not the same evidence.
   `jaato-doctor` returned to **1 fail, 8 warn, 24 checks** afterwards — the
   two extra warns beforehand were `package releases` and a skill copy stale by
   version, both cleared by the move plus
-  `jaato-scaffold integration claude-code --force`. `--ignore-requires-python`
+  `jaato-scaffold integration claude-code --force`. On **2026-10-23** the same
+  recipe moved rc26 -> **rc28** (and `jaato-eval` rc2 -> rc3), again a freeze
+  diff of exactly those two lines out of 52, and doctor returned to **1 fail,
+  8 warn, 24 checks** from the 9 it reads whenever `package releases` sees a
+  newer build. THAT move had a reason beyond currency: rc28 is the first
+  published SDK that knows `completion.processor_verdict` and
+  `completion.nudge_fired` (jaato#1777), so the gate verdicts this repository
+  depends on are finally visible to it — see trap #12.
+  `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
-  never the fix. See `docs/gaps.md`, 2026-10-17.
+  never the fix. See `docs/gaps.md`, 2026-10-17 and 2026-10-23.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
   (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
   "client and daemon both resolve jaato_sdk from <path>" while printing OUR
@@ -539,7 +547,14 @@ for `rules_read`.
    session-prep later.
 2. **`python -m jaato_server --daemon` returns before the socket is bound.** A
    client with `auto_start=False` must wait for the socket file (the test
-   fixture polls for it up to 180 s).
+   fixture polls for it up to 180 s). **After an UNCLEAN death, polling for the
+   FILE is worthless** — a daemon that is killed leaves the socket, the pid file
+   and the restart config behind, so the file is already there and the poll
+   returns at once, before the new daemon has bound anything. Measured
+   2026-10-23: a start after a SIGKILLed daemon reported "socket present after
+   1s" while nothing was listening. Poll for a CONNECT (`socket.connect` on
+   `AF_UNIX`, retry until it stops raising), which is also what proves the
+   thing is ready rather than merely present.
 3. **Client autostart can race a busy daemon.** With `auto_start=True` a
    client that times out its first connect attempt tries to start another
    daemon on the same socket. When something else owns the daemon (tests,
@@ -596,6 +611,26 @@ for `rules_read`.
 11. **The `subagent` plugin README in jaato is stale** (documents
     `background=True` / `get_subagent_result`, which do not exist). Trust
     `jaato-scaffold explain plugin subagent`.
+12. **Every session this driver opens is now AppArmor-CONFINED, and we never
+    asked for it.** Since protocol 1.46 (jaato#1808, #1809) a daemon with a
+    kernel backend confines any client-driven IPC session it was not told to
+    leave unconfined. A pre-1.46 SDK sent `apparmor: false` by DEFAULT, and
+    that is deliberately NOT read as an opt-out: `client_signal` returns
+    `True if legacy is True else None`, so our `false` means "not said" and we
+    get the daemon's default. Do not try to opt out to keep the old behaviour —
+    it is measured working here: on 2026-10-23 the whole end-to-end tier ran
+    with `confined=True` on every session (`[confinement] confined by default
+    (apparmor)`, `enforced=True`), including the stage that reads the
+    workspace, and the startup warning that the runner's interpreter is
+    "inside the workspace root /home/apanoia; not granting it (model-writable)"
+    did NOT prevent a single bootstrap. It costs **~505 ms per session** of
+    profile provisioning (501.6 ms of it the AppArmor parser), which a sweep
+    pays per session, not per run. What is still UNMEASURED is a confined
+    session making a real HTTPS call to a provider: echo needs no network, and
+    the CA-bundle grants that make TLS work under confinement landed in the
+    same payload (jaato#1814). The host-scoped escape is
+    `JAATO_IPC_CONFINE_DEFAULT=off`, announced at WARNING at startup — an
+    operator's decision about this host, never a per-run workaround.
 
 ---
 
@@ -689,8 +724,15 @@ for `rules_read`.
   `_base_<agent>` at a time (`tokens: 10`), and a capped debater and a capped
   judge must each fail by name with the journal kept before the run resumes
   and finishes. `data.instrument_context` and `data.return_after` are
-  monkeypatched so the driver never touches the network either. Stops the
-  daemon in teardown.
+  monkeypatched so the driver never touches the network either. **It does NOT
+  stop the daemon** — teardown removes only the temp workspace. It used to
+  start and stop a private one; since the tier shares the daemon you already
+  have (jaato#898 is closed), stopping it would kill the service the other
+  twelve workspaces on this host are using. Last measured **2026-10-23: 3
+  passed in 162.63 s**, every session AppArmor-confined (see trap #12), down
+  from 274.87 s on 2026-10-17 — the framework took the workspace monitor off
+  the session-create path in the same payload (jaato#1811), so the speed-up is
+  not attributable to this repository's `workspace_monitor: false` alone.
 - What echo cannot test: an analyst's real tool loop. It scripts ONE canned
   tool call and that one is spent on `signal_completion`, so a stage that
   must call several tools before it writes can only be measured against a
