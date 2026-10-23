@@ -2330,6 +2330,79 @@ it does not touch this repository, which uses OpenRouter and minimax. Fixing
 it means reinstalling inside a venv twelve other workspaces share, so it is
 the venv owner's call, not a client's.
 
+### The wheels left the index, and the client was a protocol behind (2026-10-23, jaato#1816/#1808)
+
+The jaato repository is private, so jaato#1816 gave its four publish workflows
+a `target: release`: the same gate, README and build steps, but the wheel, the
+sdist and a `SHA256SUMS` are attached to a GitHub Release tagged
+`<dist>-<version>` instead of uploaded to an index. Two consequences for a
+CLIENT venv, which §2 of `CLAUDE.md` now carries:
+
+- **A build can exist with no index entry.** `jaato-sdk 0.30.0rc30` and
+  `jaato-eval 0.3.5rc5` are Release-only; TestPyPI's newest were rc29 and rc4.
+  Installing one is `gh release download` into its own empty directory,
+  `sha256sum -c SHA256SUMS`, then
+  `pip install --no-index --find-links <dir> jaato-sdk==0.30.0rc30` under the
+  usual `PIP_CONSTRAINT`. Nothing is downloaded: the SDK's only dependencies
+  are `python-dotenv` and `pydantic>=2,<3`, both already satisfied. Freeze diff
+  exactly one line out of 52 per package, `pip check` clean.
+- **`jaato-doctor`'s `package releases` check went one-directional.** It
+  queries the indexes, so it cannot see a private repository's Release. It
+  PASSes while a newer wheel exists, and it PASSes when the venv holds a
+  Release-only build that is newer than anything it can reach. Both silences
+  look identical. It still catches a build staged on TestPyPI, which is how it
+  read 9 warn here before this move (naming rc29 and rc4) and 8 after. What
+  exists is `gh release list` in the jaato checkout, not an index query.
+
+**The protocol gap was ours, and it was invisible.** The 2026-10-23 finding
+above recorded that every session is confined and that we never asked for it.
+The reason is sharper than "the daemon changed its default": **rc28 speaks
+protocol 1.45, which has no field for a confinement decision.** 1.46 adds
+`workspace_confinement` — three-valued, `None` the daemon's default, `True`
+confine, `False` an announced opt-out — to `IPCClient`, `IPCRecoveryClient`
+and `convenience.session(...)`, keeping `apparmor` as a deprecated alias whose
+default moved from `False` to `None`. So the old client's `apparmor: false`
+really was "not said" rather than a decision overruled, and `client_signal`
+reading it as such is correct rather than merely convenient. `open_stage`
+passes neither field: unset is the daemon's default, which is confinement, and
+that is measured working.
+
+rc30 closes two things this repository had written down as open:
+
+- **Introspection was behind the daemon.** `explain profile` on rc28 had zero
+  mentions of `workspace_monitor`; rc30's scaffold snapshot documents it, in
+  wording that confirms how the seven stages use it — *"Unset = yes. false
+  skips it, for a session no client watches (a cascade stage): no baseline
+  walk, no watches."* The §2 rule (ask the framework, never read its source)
+  has this failure mode when client and daemon straddle a release, and the
+  escape is the daemon's own `validate` output, which was already current.
+- **A confined session's provider access was only readable in the daemon's
+  log.** rc30's `DiagnosticsResultEvent` carries `confinement_decision` and
+  `provider_files` (each file a provider declared, with `copy` / `grant` /
+  `none` / `refused` and its reason, jaato#1814). `sessionlog._consumption`
+  already calls `get_diagnostics()` once per session while it is still
+  attached, so recording those two is a one-line change whenever someone wants
+  confinement evidence per stage rather than per host. NOT done here: a real
+  HTTPS provider call under confinement is still unmeasured, and the field
+  would record an answer nobody has produced yet.
+
+Both rc30 and jaato-eval rc5 were built from `92d7a419`, the commit this
+host's daemon checkout runs, so client and daemon are the same revision for
+once — by timing, not by any mechanism. `jaato_sdk checkout` still WARNs that
+it cannot verify this (#1610), and it is right to: nothing holds the two
+together.
+
+jaato-eval rc5 still declares `CONTRACT_VERSION = "1"`, which
+`ta_cascade/contract.py` accepts, so the sweep harness is unaffected by the
+two-build jump.
+
+Both tiers re-run on rc30: 147 unit tests, and the end-to-end tier
+**3 passed in 120.89 s**. The daemon applied 40 AppArmor profiles across the tier's two
+temp workspaces with zero `confined=False` and zero `enforced=False`, and
+zero ERROR lines in the window — and its own message now reads *"confined by
+default (apparmor); a client opts out with workspace_confinement=False"*,
+which is the 1.46 field, so the daemon reads what rc30 can now send.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
