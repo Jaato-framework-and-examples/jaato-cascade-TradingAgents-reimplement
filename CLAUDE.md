@@ -66,9 +66,15 @@ what a shared daemon is for.
 # same pin, so a 3.12 venv cannot install the current rc. There is no system
 # python3.14 on this host; `uv python install 3.14` provides one.
 ~/.local/bin/python3.14 -m venv .venv
-# The SDK and jaato-eval are both PUBLISHED packages. On a release both come
-# from PyPI; this venv currently tracks release candidates, which live on
-# TestPyPI, so the two index flags are needed and `--pre` is what allows an rc.
+# The SDK and jaato-eval are published packages, but NO LONGER always to an
+# index: the jaato repository is private, so since 2026-10-23 (jaato#1816) a
+# build may be attached to a GitHub RELEASE of that private repository instead
+# of uploaded anywhere public. This recipe still BUILDS the venv — it is what
+# resolves pandas/yfinance/starlette — but it cannot reach such a build; see
+# "A build that lives only on a GitHub Release" below for that.
+# On a release both come from PyPI; this venv tracks release candidates, which
+# are staged on TestPyPI, so the two index flags are needed and `--pre` is what
+# allows an rc.
 # Pass BOTH indexes: TestPyPI alone cannot resolve pandas/yfinance/starlette.
 #
 # ON A FRESH VENV, CONSTRAIN IT. `--pre` is global: it licenses a pre-release
@@ -93,6 +99,32 @@ a newer build published there, so take a `pip freeze` before and after and
 diff it: on 2026-10-09 each of the two installs moved exactly one line. The
 absence of a complaint from pip is not the same evidence.
 
+**A build that lives only on a GitHub Release.** The jaato repository is
+private, and jaato#1816 gave its four publish workflows a `target: release`
+that runs the same gate and build steps and attaches the wheel, the sdist and
+a `SHA256SUMS` to a Release tagged `<dist>-<version>` — the same tag name the
+PyPI path uses. So a build can exist with no index entry at all, and for such
+a build this is the install path:
+
+```bash
+cd ../jaato && gh release list | head        # what exists; `gh release view <tag>`
+D=$(mktemp -d)                               # its OWN empty directory
+gh release download jaato-sdk-0.30.0rc30 --repo Jaato-framework-and-examples/jaato --dir "$D"
+(cd "$D" && sha256sum -c SHA256SUMS)         # the Release ships the sums; CHECK them
+# --no-index: there is nothing to resolve from an index, and the SDK's own
+# dependencies (python-dotenv, pydantic>=2,<3) are already satisfied here, so
+# nothing is downloaded. The constraint keeps the other 50 lines nailed down.
+PIP_CONSTRAINT=pins.txt .venv/bin/pip install --no-index --find-links "$D" "jaato-sdk==0.30.0rc30"
+```
+
+**`jaato-doctor`'s `package releases` check is now a ONE-DIRECTIONAL signal.**
+It queries the indexes, which a private repository's Release is not, so it
+PASSes ("nothing newer is published") while a newer wheel sits on the Release
+page — and when the venv holds a Release-only build it reports that build as
+newer than anything it can see, which is also silence. It still catches a
+newer build staged on TestPyPI. The source of truth for what exists is
+`gh release list` in the jaato checkout.
+
 - `jaato-scaffold` and `jaato-doctor` come with **jaato-sdk**, so a client venv
   has both. `validate` needs no local server: it DELEGATES, and says so —
   `[validated by the daemon at /tmp/jaato.sock (jaato-server 1.3.0) — not this venv]`.
@@ -113,11 +145,14 @@ absence of a complaint from pip is not the same evidence.
   `import jaato_server … required for autostart`. It does not apply here —
   `RunConfig.auto_start=False` against a shared daemon never starts one — and
   the `jaato_server checkout` skew check degrades to a WARN for the same
-  reason. The tally to expect is **1 fail, 8 warn, 24 checks**
-  (2026-10-17, on 3.14 with SDK 0.30.0rc22). It went to 9 warn earlier that day
-  when `package releases` reported an rc this venv could not install, and back
-  to 8 — PASS, "nothing newer is published" — once the venv moved to 3.14 and
-  took rc22. Compare the LINES, not the number: `jaato_sdk checkout` and
+  reason. The tally to expect is **1 fail, 8 warn, 24 checks**, first on
+  2026-10-17 (3.14, SDK 0.30.0rc22) and re-measured 2026-10-23 on SDK
+  0.30.0rc30 + jaato-eval 0.3.5rc5. On 2026-10-17 it went to 9 warn when
+  `package releases` reported an rc this venv could not install, and back to
+  8 — PASS, "nothing newer is published" — once the venv moved to 3.14 and
+  took rc22. Read that check with the caveat in §2 above: on a private
+  repository it cannot see a Release, so its PASS now means "nothing newer on
+  an index", which is a weaker statement than it used to be. Compare the LINES, not the number: `jaato_sdk checkout` and
   `jaato_server checkout` are WARNs here by construction (see #1610 below). Verified 2026-10-06 on `jaato-sdk` 0.29.0 (PyPI) and again
   2026-10-09 on 0.30.0rc6 (TestPyPI), 2026-10-14 on 0.30.0rc16 — the
   first published build whose `register_client_tools` reports the daemon's
@@ -159,9 +194,33 @@ absence of a complaint from pip is not the same evidence.
   `jaato-doctor` returned to **1 fail, 8 warn, 24 checks** afterwards — the
   two extra warns beforehand were `package releases` and a skill copy stale by
   version, both cleared by the move plus
-  `jaato-scaffold integration claude-code --force`. `--ignore-requires-python`
+  `jaato-scaffold integration claude-code --force`. On **2026-10-23** the same
+  recipe moved rc26 -> **rc28** (and `jaato-eval` rc2 -> rc3), again a freeze
+  diff of exactly those two lines out of 52, and doctor returned to **1 fail,
+  8 warn, 24 checks** from the 9 it reads whenever `package releases` sees a
+  newer build. THAT move had a reason beyond currency: rc28 is the first
+  published SDK that knows `completion.processor_verdict` and
+  `completion.nudge_fired` (jaato#1777), so the gate verdicts this repository
+  depends on are finally visible to it — see trap #12. Later the SAME DAY it
+  moved rc28 -> **rc30** (and `jaato-eval` rc3 -> **rc5**), this time from a
+  GitHub Release rather than an index, by the recipe above: one wheel each,
+  checksums verified, a freeze diff of exactly one line out of 52 per package,
+  `pip check` clean, and doctor back to **1 fail, 8 warn, 24 checks** (it read
+  9 beforehand, naming rc29/rc4 on TestPyPI). THAT move is the one that closes
+  the protocol gap: **rc28 is a 1.45 client and rc30 is 1.46**, so rc28 had no
+  field in which to state a confinement decision at all — which is the root of
+  trap #12, not a daemon default chosen against us. rc30 also carries the
+  scaffold snapshot that KNOWS `workspace_monitor` (`explain profile` on rc28:
+  zero mentions), so introspection is no longer behind the daemon here, and
+  `DiagnosticsResultEvent` gains `confinement_decision` and `provider_files`
+  (jaato#1809, #1814) — the two facts a session's confinement was previously
+  only readable for in the daemon's own log.
+  Both rc30 and jaato-eval rc5 were built from `92d7a419`, the commit this
+  host's daemon checkout is on, so client and daemon are the same revision —
+  by timing, not by any mechanism that keeps them so.
+  `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
-  never the fix. See `docs/gaps.md`, 2026-10-17.
+  never the fix. See `docs/gaps.md`, 2026-10-17 and 2026-10-23.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
   (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
   "client and daemon both resolve jaato_sdk from <path>" while printing OUR
@@ -539,7 +598,14 @@ for `rules_read`.
    session-prep later.
 2. **`python -m jaato_server --daemon` returns before the socket is bound.** A
    client with `auto_start=False` must wait for the socket file (the test
-   fixture polls for it up to 180 s).
+   fixture polls for it up to 180 s). **After an UNCLEAN death, polling for the
+   FILE is worthless** — a daemon that is killed leaves the socket, the pid file
+   and the restart config behind, so the file is already there and the poll
+   returns at once, before the new daemon has bound anything. Measured
+   2026-10-23: a start after a SIGKILLed daemon reported "socket present after
+   1s" while nothing was listening. Poll for a CONNECT (`socket.connect` on
+   `AF_UNIX`, retry until it stops raising), which is also what proves the
+   thing is ready rather than merely present.
 3. **Client autostart can race a busy daemon.** With `auto_start=True` a
    client that times out its first connect attempt tries to start another
    daemon on the same socket. When something else owns the daemon (tests,
@@ -596,6 +662,43 @@ for `rules_read`.
 11. **The `subagent` plugin README in jaato is stale** (documents
     `background=True` / `get_subagent_result`, which do not exist). Trust
     `jaato-scaffold explain plugin subagent`.
+12. **Every session this driver opens is now AppArmor-CONFINED, and we never
+    asked for it.** Since protocol 1.46 (jaato#1808, #1809) a daemon with a
+    kernel backend confines any client-driven IPC session it was not told to
+    leave unconfined. A pre-1.46 SDK sent `apparmor: false` by DEFAULT, and
+    that is deliberately NOT read as an opt-out: `client_signal` returns
+    `True if legacy is True else None`, so our `false` means "not said" and we
+    get the daemon's default. Do not try to opt out to keep the old behaviour —
+    it is measured working here: on 2026-10-23 the whole end-to-end tier ran
+    with `confined=True` on every session (`[confinement] confined by default
+    (apparmor)`, `enforced=True`), including the stage that reads the
+    workspace, and the startup warning that the runner's interpreter is
+    "inside the workspace root /home/apanoia; not granting it (model-writable)"
+    did NOT prevent a single bootstrap. It costs **~505 ms per session** of
+    profile provisioning (501.6 ms of it the AppArmor parser), which a sweep
+    pays per session, not per run. What is still UNMEASURED is a confined
+    session making a real HTTPS call to a provider: echo needs no network, and
+    the CA-bundle grants that make TLS work under confinement landed in the
+    same payload (jaato#1814) — though since SDK rc30 the ANSWER is readable
+    from the client: `DiagnosticsResultEvent` carries `confinement_decision`
+    (why the session is or is not confined) and `provider_files` (each file a
+    provider declared, with `copy` / `grant` / `none` / `refused` and the
+    reason), and `sessionlog._consumption` already asks `get_diagnostics()`
+    once per session while it is still attached, which is where those two
+    belong when someone wants them per stage.
+    **This client could not say anything about confinement until rc30.** rc28
+    speaks protocol 1.45, which has no field for it; 1.46 adds
+    `workspace_confinement` (`None` = the daemon's default, `True` = confine,
+    `False` = an announced opt-out) to `IPCClient`, `IPCRecoveryClient` and
+    `convenience.session(...)`, with `apparmor` kept as a deprecated alias
+    whose default moved from `False` to `None`. `sessions.open_stage` passes
+    NEITHER, deliberately: unset means the daemon's default, which is
+    confinement, and that is measured working above. Leave it unset — an
+    explicit `False` is an announced opt-out and would be a per-run workaround
+    for a thing that is not broken.
+    The host-scoped escape is
+    `JAATO_IPC_CONFINE_DEFAULT=off`, announced at WARNING at startup — an
+    operator's decision about this host, never a per-run workaround.
 
 ---
 
@@ -689,8 +792,20 @@ for `rules_read`.
   `_base_<agent>` at a time (`tokens: 10`), and a capped debater and a capped
   judge must each fail by name with the journal kept before the run resumes
   and finishes. `data.instrument_context` and `data.return_after` are
-  monkeypatched so the driver never touches the network either. Stops the
-  daemon in teardown.
+  monkeypatched so the driver never touches the network either. **It does NOT
+  stop the daemon** — teardown removes only the temp workspace. It used to
+  start and stop a private one; since the tier shares the daemon you already
+  have (jaato#898 is closed), stopping it would kill the service the other
+  twelve workspaces on this host are using. Last measured **2026-10-23: 3
+  passed in 120.89 s** on SDK 0.30.0rc30 (protocol 1.46), every session
+  AppArmor-confined — 40 profiles applied across the tier's two temp
+  workspaces, no `confined=False`, no `enforced=False` (see trap #12).
+  The same tier read 3 passed in 162.63 s earlier that day on rc28,
+  and 274.87 s on 2026-10-17 — the framework took the workspace monitor off
+  the session-create path in the same payload (jaato#1811), so the speed-up is
+  not attributable to this repository's `workspace_monitor: false` alone, and
+  a single timing on a host with seven other tenants resident is not evidence
+  of anything finer than the order of magnitude.
 - What echo cannot test: an analyst's real tool loop. It scripts ONE canned
   tool call and that one is spent on `signal_completion`, so a stage that
   must call several tools before it writes can only be measured against a

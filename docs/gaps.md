@@ -2257,6 +2257,152 @@ packages had to be named explicitly, still under the same `PIP_CONSTRAINT`.
 the rc26 client still delegates to the 1.3.0 daemon — the two sides share a
 wire protocol, not a build.
 
+### Every session is confined now, and the client caught up to the gates (2026-10-23, jaato#1808/#1809/#1777/#1811)
+
+Three things landed together, and the end-to-end tier measured all of them at
+once: **3 passed in 162.63 s**, the first run of that tier since 2026-10-14.
+
+**Confinement stopped being opt-in.** Protocol 1.46 confines any
+client-driven IPC session a daemon with a kernel backend was not told to leave
+unconfined. The surprise is that our client never says anything either way and
+still gets it: a pre-1.46 SDK sends `apparmor: false` by DEFAULT, and
+`jaato_sdk.confinement_option.client_signal` returns
+`True if legacy is True else None` — so `false` is "not said", not an opt-out,
+and the daemon's default applies. That was worth settling BEFORE restarting,
+because this daemon warns at every startup that the runner's own interpreter
+(`~/.local/share/uv/python/cpython-3.14.2-.../bin/python3.14`, which is what
+`venv/bin/python` resolves to) sits "inside the workspace root /home/apanoia"
+and is "not granting it (model-writable)" — an ungranted interpreter under a
+new mandatory profile is a plausible way for every session on the host to stop
+bootstrapping.
+
+It does not. One probed session through `open_stage` came back
+`[confinement] confined by default (apparmor)`, `confined=True`,
+`profile applied`, `enforced=True`; then the whole tier ran the pipeline twice
+plus the resume and budget tests with `confined=True` on every session. The
+measured cost is **~505 ms per session** of provisioning, 501.6 ms of it the
+AppArmor parser — a per-SESSION cost, so a sweep pays it ~11 times per run,
+not once. Still unmeasured: a confined session making a real HTTPS call to a
+provider. Echo needs no network, and the CA-bundle grants that make TLS work
+under confinement (jaato#1814) arrived in this same payload, which is itself a
+sign that confinement broke TLS for someone. `JAATO_IPC_CONFINE_DEFAULT=off`
+is the host-scoped escape, announced at WARNING; it was not needed.
+
+**The client caught up to the completion gates.** `jaato-sdk` 0.30.0rc26 ->
+rc28 (`jaato-eval` rc2 -> rc3), freeze diff exactly those two lines of 52.
+rc26 RAISED `ValueError: Unknown event type` on `completion.processor_verdict`
+and `completion.nudge_fired` (jaato#1777) — bounded, because
+`IPCClient._drain_loop` logs one line and continues, but one line per gated
+stage per run, in OUR client's log, where trap #6 only ever inventoried noise
+in the DAEMON's. rc28 deserializes both into typed events, and a probe that
+drove one gated echo stage saw
+`COMPLETION_PROCESSOR_VERDICT analyst_report accepted errors=0 refusals=0`
+arrive. That is new observability, not just quieter logs: a `NudgeExhausted`
+dead-end (§4, what echo cannot test) was until now diagnosable only by
+inference.
+
+**Seven stages stopped paying for a Files panel nobody reads.** The daemon's
+own `validate` began reporting `workspace_monitor_unwatched` (jaato#1811) for
+every concrete, completion-gated profile with no tool plugins: the four
+analysts, `research_manager`, `portfolio_manager` and `reflector` each kept the
+workspace monitor, costing a baseline walk and one watch per kept directory per
+session. They now declare `workspace_monitor: false` on their `_base_<agent>`,
+which cleared all seven advisories (workspace info 7 -> 0 on both real sets;
+3 warn / 3 warn / 2 warn + 13 info and zero errors is unchanged). The tier got
+faster in the same step — 274.87 s on 2026-10-17 to 162.63 s — but the cause is
+NOT isolated: the same payload also took the monitor off the session-create
+path framework-side, so this profile change is belt-and-braces on top of a
+framework fix, and nothing here measures the two apart.
+
+A note on introspection, which §2 calls the source of truth: it was BEHIND the
+daemon here. `explain profile` on rc28 has no mention of `workspace_monitor` at
+all — the scaffold surfacing for it is in the checkout the daemon runs but not
+in the published rc. What named the key, its value and its placement was the
+daemon's own `validate` output, and the field itself
+(`Optional[bool]`, default `None`, top-level on the profile). When the client's
+snapshot and the daemon disagree, the daemon is the one that reads the profile.
+
+**Carried, not closed:** the daemon venv holds `anthropic` 1.15.0 while the
+tree now pins `anthropic>=0.40.0,<1` (jaato#1800: the 1.x SDK moved to httpx2
+and client construction fails with the httpx client the tree passes). It is
+pre-existing — installed 2026-10-17 18:21, three daemons have run on it — and
+it does not touch this repository, which uses OpenRouter and minimax. Fixing
+it means reinstalling inside a venv twelve other workspaces share, so it is
+the venv owner's call, not a client's.
+
+### The wheels left the index, and the client was a protocol behind (2026-10-23, jaato#1816/#1808)
+
+The jaato repository is private, so jaato#1816 gave its four publish workflows
+a `target: release`: the same gate, README and build steps, but the wheel, the
+sdist and a `SHA256SUMS` are attached to a GitHub Release tagged
+`<dist>-<version>` instead of uploaded to an index. Two consequences for a
+CLIENT venv, which §2 of `CLAUDE.md` now carries:
+
+- **A build can exist with no index entry.** `jaato-sdk 0.30.0rc30` and
+  `jaato-eval 0.3.5rc5` are Release-only; TestPyPI's newest were rc29 and rc4.
+  Installing one is `gh release download` into its own empty directory,
+  `sha256sum -c SHA256SUMS`, then
+  `pip install --no-index --find-links <dir> jaato-sdk==0.30.0rc30` under the
+  usual `PIP_CONSTRAINT`. Nothing is downloaded: the SDK's only dependencies
+  are `python-dotenv` and `pydantic>=2,<3`, both already satisfied. Freeze diff
+  exactly one line out of 52 per package, `pip check` clean.
+- **`jaato-doctor`'s `package releases` check went one-directional.** It
+  queries the indexes, so it cannot see a private repository's Release. It
+  PASSes while a newer wheel exists, and it PASSes when the venv holds a
+  Release-only build that is newer than anything it can reach. Both silences
+  look identical. It still catches a build staged on TestPyPI, which is how it
+  read 9 warn here before this move (naming rc29 and rc4) and 8 after. What
+  exists is `gh release list` in the jaato checkout, not an index query.
+
+**The protocol gap was ours, and it was invisible.** The 2026-10-23 finding
+above recorded that every session is confined and that we never asked for it.
+The reason is sharper than "the daemon changed its default": **rc28 speaks
+protocol 1.45, which has no field for a confinement decision.** 1.46 adds
+`workspace_confinement` — three-valued, `None` the daemon's default, `True`
+confine, `False` an announced opt-out — to `IPCClient`, `IPCRecoveryClient`
+and `convenience.session(...)`, keeping `apparmor` as a deprecated alias whose
+default moved from `False` to `None`. So the old client's `apparmor: false`
+really was "not said" rather than a decision overruled, and `client_signal`
+reading it as such is correct rather than merely convenient. `open_stage`
+passes neither field: unset is the daemon's default, which is confinement, and
+that is measured working.
+
+rc30 closes two things this repository had written down as open:
+
+- **Introspection was behind the daemon.** `explain profile` on rc28 had zero
+  mentions of `workspace_monitor`; rc30's scaffold snapshot documents it, in
+  wording that confirms how the seven stages use it — *"Unset = yes. false
+  skips it, for a session no client watches (a cascade stage): no baseline
+  walk, no watches."* The §2 rule (ask the framework, never read its source)
+  has this failure mode when client and daemon straddle a release, and the
+  escape is the daemon's own `validate` output, which was already current.
+- **A confined session's provider access was only readable in the daemon's
+  log.** rc30's `DiagnosticsResultEvent` carries `confinement_decision` and
+  `provider_files` (each file a provider declared, with `copy` / `grant` /
+  `none` / `refused` and its reason, jaato#1814). `sessionlog._consumption`
+  already calls `get_diagnostics()` once per session while it is still
+  attached, so recording those two is a one-line change whenever someone wants
+  confinement evidence per stage rather than per host. NOT done here: a real
+  HTTPS provider call under confinement is still unmeasured, and the field
+  would record an answer nobody has produced yet.
+
+Both rc30 and jaato-eval rc5 were built from `92d7a419`, the commit this
+host's daemon checkout runs, so client and daemon are the same revision for
+once — by timing, not by any mechanism. `jaato_sdk checkout` still WARNs that
+it cannot verify this (#1610), and it is right to: nothing holds the two
+together.
+
+jaato-eval rc5 still declares `CONTRACT_VERSION = "1"`, which
+`ta_cascade/contract.py` accepts, so the sweep harness is unaffected by the
+two-build jump.
+
+Both tiers re-run on rc30: 147 unit tests, and the end-to-end tier
+**3 passed in 120.89 s**. The daemon applied 40 AppArmor profiles across the tier's two
+temp workspaces with zero `confined=False` and zero `enforced=False`, and
+zero ERROR lines in the window — and its own message now reads *"confined by
+default (apparmor); a client opts out with workspace_confinement=False"*,
+which is the 1.46 field, so the daemon reads what rc30 can now send.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

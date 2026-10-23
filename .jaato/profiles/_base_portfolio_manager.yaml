@@ -4,6 +4,14 @@
 name: _base_portfolio_manager
 description: final decision after the risk discussion.
 plugins: []
+# No client watches this stage, so the workspace monitor is dead weight:
+# it costs a baseline walk and one watch per kept directory PER SESSION
+# (jaato#1811, surfaced by validate as workspace_monitor_unwatched).  This
+# pipeline opens ~11 sessions a run and a sweep multiplies that.  Nothing
+# here reads a Files panel: the driver's observer consumes cascade events
+# only, and a gate's rendered section is written by the daemon from the
+# `output:` template, not discovered by watching the tree.
+workspace_monitor: false
 budget_control:
   # Judge: 1 signal_completion observed, but field-by-field completion can take ~15 calls; 17-81 s.
   # Sizing and mechanics: docs/gaps.md #15.
