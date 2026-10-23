@@ -2322,13 +2322,40 @@ daemon's own `validate` output, and the field itself
 (`Optional[bool]`, default `None`, top-level on the profile). When the client's
 snapshot and the daemon disagree, the daemon is the one that reads the profile.
 
-**Carried, not closed:** the daemon venv holds `anthropic` 1.15.0 while the
-tree now pins `anthropic>=0.40.0,<1` (jaato#1800: the 1.x SDK moved to httpx2
-and client construction fails with the httpx client the tree passes). It is
-pre-existing — installed 2026-10-17 18:21, three daemons have run on it — and
-it does not touch this repository, which uses OpenRouter and minimax. Fixing
-it means reinstalling inside a venv twelve other workspaces share, so it is
-the venv owner's call, not a client's.
+**Carried, and now FILED as jaato#1819.** The daemon venv holds `anthropic`
+1.15.0 while the tree pins `anthropic>=0.40.0,<1` (jaato#1800 item 1). It is
+pre-existing — installed 2026-10-17 18:21, five days before the ceiling landed
+in `2f51d4b7` on 2026-10-22, and three daemons have run on it — and it does not
+touch this repository, which uses OpenRouter and minimax.
+
+Reproduced before filing, because the pin's comment ("client construction fails
+with the httpx client this tree passes") is broader than the failure:
+
+```
+anthropic 1.15.0 | httpx 0.28.1 | httpx2 2.13.1   (both flavours present)
+Anthropic(api_key=...)                            -> OK
+Anthropic(api_key=..., http_client=httpx.Client())
+    -> TypeError: Invalid `http_client` argument; `httpx.Client` is from the
+       `httpx` package, but this SDK uses `httpx2`.
+Anthropic(api_key=..., http_client=httpx2.Client())  -> OK
+```
+
+The provider passes a client ONLY when a CA bundle, a proxy or Kerberos is
+configured (`_create_http_client` returns `None` otherwise), and none of the
+three is set for this daemon — checked its own `/proc/<pid>/environ`. So on
+this host it is **latent, not live**, and a downgrade inside a shared venv is
+the riskier move; #1819 argues the ceiling is on the wrong package anyway,
+since `httpx>=0.27.0` is itself unbounded and `get_httpx_client()` is one
+httpx-0.x factory handed to four providers' SDKs.
+
+Two checking lessons from this, both the same shape as the daemon-log grep
+above: that venv is **uv-managed and has no pip at all** (`bin/pip` absent,
+`python -m pip` -> "No module named pip"), so every `pip list` run against it
+returned nothing and the silence read as "no match". And `jaato-doctor`'s
+`dependency coherence` check degrades to a WARN whenever `jaato_server` is not
+importable, which is the normal case for a client venv — so nothing here
+compares installed versions against the tree's declared pins. The absence of
+output from a command that cannot work is not evidence.
 
 ### The wheels left the index, and the client was a protocol behind (2026-10-23, jaato#1816/#1808)
 
