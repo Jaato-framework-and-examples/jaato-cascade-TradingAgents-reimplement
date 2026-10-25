@@ -2430,6 +2430,97 @@ zero ERROR lines in the window — and its own message now reads *"confined by
 default (apparmor); a client opts out with workspace_confinement=False"*,
 which is the 1.46 field, so the daemon reads what rc30 can now send.
 
+### A run is readable stage by stage, and the turn ceiling counts the wrong thing (2026-10-25)
+
+Built the run monitor the claims-management cascade's simulator suggested — a
+card per stage whose icon row is its capability row, and a drawer over the
+session — and chose the variant that keeps the board **read-only, stateless and
+daemon-free**: the driver writes its cascade events down
+(`results/<t>/<d>/events.jsonl`, 9-ish rows a run) and every reader
+re-reads files. The rejected variant was a monitor process holding a live
+observer of its own: it loses everything on a restart, and it can say nothing
+about a run that finished before it started, which here is almost all of them.
+
+**What the events file does and does not carry.** Four event classes —
+`AgentCreatedEvent`, `ToolCallStartEvent`, `ToolCallEndEvent`,
+`SessionTerminatedEvent`: one row per session, one per tool call, each with the
+call's OUTCOME, which the driver never learns because a tool call that failed
+inside a stage is not a stage that failed. `AgentOutputEvent` is deliberately
+excluded. The per-client IPC queue is bounded (`JAATO_IPC_EVENT_QUEUE_MAX`,
+default 2048) and past the bound "the oldest lossy chunks drop", and **no event
+in `jaato_sdk.events` carries a sequence number**, so a client cannot tell a
+dropped chunk from a model that said nothing: a transcript assembled from that
+stream would be silently incomplete and would look complete. The model's words
+are read from the record the daemon saves whole instead, so the drawer degrades
+to complete-but-delayed, never to silently-missing. Measured on a kept echo
+run: 22 rows, 9 sessions, all four kinds, with per-call durations.
+
+**The session record answers more than expected, which is what makes the board
+daemon-free.** `.jaato/sessions/<id>.json` carries `rendered_instructions` (the
+persona as the model ACTUALLY received it, params substituted),
+`profile_snapshot` (the profile as the session ACTUALLY resolved it),
+`agent_params`, `turn_count` and `end_reason`. So the drawer shows what the
+model got rather than what the tree declares now, and a stage's capability set
+comes from the same keys in either the snapshot or `_base_<agent>.yaml` — one
+reader, the record preferred, the YAML answering for a stage still in flight
+that has no record until its first tool call.
+
+**`budget_control.limits.turns` does not count the stage's turns.** Across all
+ten sessions of this run `budget_usage.turns` is **1.0**, while the records'
+own `turn_count` runs 1 … 7 and `turn_accounting` is a single `{"turn": 0}`
+entry listing every call of the session. To `budget_control` a "turn" is one
+provider BINDING, not a step of the model's tool loop. Two consequences:
+
+| stage | `limits.turns` | `budget_usage.turns` | record `turn_count` |
+|---|---|---|---|
+| trader | 6 | 1.0 | **7** |
+| research_manager | 6 | 1.0 | 6 |
+| sentiment_analyst | 8 | 1.0 | 2 |
+
+The **trader exceeded its declared ceiling** (7 against 6)
+with `budget_exhausted_reason: None` — the `degrade: [{at: 100, action:
+abort}]` rung never fired. And the dimension reads as the BINDING one on any
+stage whose tool use is light (1/8 beats 5/60), so "turns binds" invites tuning
+a ceiling that does nothing. What actually bounds a stage here is `tool_calls`
+and `seconds`. This is the shape of `max_turns`, which jaato#1068 removed
+"having measured that it was compared against a turn counter in no path of the
+framework" — one key later. `runview` reports both numbers and flags the
+disagreement; the `turns` entries in the profiles are UNCHANGED, because
+re-sizing a ceiling is a decision about this pipeline, not a consequence of
+reading its telemetry. **Not filed upstream yet.**
+
+**Two things the transcripts say that no board showed before.** Both are why
+the drawer earns its place, and both are on `minimax_m3`:
+
+* **`research_manager` spent 8 of its 9 tool calls on
+  `list_tools` / `get_tool_schemas`.** Its own words in the record: *"The
+  completion tools aren't showing in the visible categories"*, then *"The
+  available tool categories are only coordination and system"*. The stage
+  declares `plugins: []` and has no host tools, and `signal_completion` is
+  injected rather than listed, so a model that tries to VERIFY its tool surface
+  before using it burns turns and 9,400 characters of reasoning, then calls the
+  tool anyway. The ceiling did not stop it because `tool_calls` was 9 of 30.
+* **All three risk panellists emitted a tool call as PROSE and nothing ran.**
+  `risk_aggressive`'s whole turn is
+  `]<]minimax[>[<tool_call>{"name": "read_file", "arguments": {"filePath":
+  "/tmp/pinchbench/0008/agent_workspace/CLAUDE.md"}}]<]minimax[` — a path
+  belonging to some other benchmark. 0 tool calls each, ~14k
+  tokens each, 1.9-2.4 s each, and the terminal board showed all three as done.
+  This is the `prose_tool_calls` quirk `explain provider minimax` names and
+  does not describe, which CLAUDE.md recorded as UNMEASURED; it is measured
+  now. The three risk turns of this run are unusable as argument, and any
+  scoring that treated them as a risk debate scored three empty turns.
+
+**A correction to the layout docs.** There are **3** completion gates
+on disk — `analyst_report.py`, `price_fields.py`, `rules_read.py` — not the two
+CLAUDE.md §3 listed, and the trader carries two of them concatenated. `research_manager` and `reflector`
+declare a schema and no processor, so they render no section; an earlier grep
+of mine for `output:` matched the word inside a comment and said otherwise.
+
+Checks: unit tier **171 passed** (24 of them new, for `runview` and
+`eventlog`), end-to-end **3 passed in 125.64 s** against the shared daemon,
+and the board smoke-tested over the real run and over a kept echo run.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

@@ -73,6 +73,22 @@ def build_parser() -> argparse.ArgumentParser:
                                         "(needs jaato-eval --keep-workspaces)")
     c.add_argument("--repo", type=Path, default=Path.cwd())
 
+    # One run, stage by stage. Bound to ONE results tree and the workspace the
+    # daemon saved its session records into, because a sweep arm keeps its own
+    # pair of those and guessing which arm a cell meant is not this board's job:
+    # point it at the arm (`--results <ws>/results --workspace <ws>`).
+    r = sub.add_parser("run-board", help="serve a read-only web board over one run's files")
+    r.add_argument("--results", type=Path, default=Path.cwd() / "results",
+                   help="the results tree a run wrote (default: ./results)")
+    r.add_argument("--workspace", type=Path, default=Path.cwd(),
+                   help="where the daemon saved the session records, i.e. the run's "
+                        "workspace holding .jaato/sessions/ (default: cwd)")
+    r.add_argument("--config-root", type=Path, default=None,
+                   help="the .jaato/ tree whose profiles answer for a stage with no session "
+                        "record yet (default: <workspace>/.jaato)")
+    r.add_argument("--host", default="127.0.0.1")
+    r.add_argument("--port", type=int, default=8098)
+
     return p
 
 
@@ -141,10 +157,31 @@ def _sweep_board(args) -> int:
     return 0
 
 
+def _run_board(args) -> int:
+    """Serve one run's board. Read-only, and it asks the daemon nothing.
+
+    A run's stages, the persona each was given and the profile each resolved
+    are read from the session records the daemon already saved, so this renders
+    a finished run, a run whose daemon has since restarted, and a run in flight
+    the same way.
+    """
+    import uvicorn
+
+    from .ui.api import create_app
+
+    app = create_app(results_dir=args.results, workspace=args.workspace,
+                     config_root=args.config_root)
+    print(f"run board over {args.results} on http://{args.host}:{args.port}  (ctrl-c to stop)")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "sweep-board":
         return _sweep_board(args)
+    if args.command == "run-board":
+        return _run_board(args)
     if args.command == "backtest-tasks":
         return _backtest_tasks(args)
     try:

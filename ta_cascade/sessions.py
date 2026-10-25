@@ -22,7 +22,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from jaato_sdk import ClientType, IPCClient, IPCRecoveryClient
 
-from . import sessionlog, tools
+from . import eventlog, sessionlog, tools
 from .config import RunConfig
 from .observer import OBSERVED_EVENT_TYPES, StageObserver
 
@@ -186,17 +186,29 @@ async def observing(cfg: RunConfig, cascade_id: str,
         workspace_path=str(cfg.workspace),
         config_root=str(cfg.config_root),
     )
+    events = eventlog.path_for(cfg.results_dir, cfg.ticker, cfg.trade_date)
     if not await client.connect(timeout=cfg.connect_timeout):
         log_line("stage-interior progress is OFF: the observer could not reach the daemon")
+        # Written down, not merely printed: a reader coming to this run
+        # afterwards must be able to tell an empty events file from a stage
+        # that did nothing, and the terminal line is gone by then.
+        eventlog.append(events, eventlog.note("observer_detached", why="could not reach the daemon"))
         yield
         return
 
     watcher = StageObserver()
+    eventlog.append(events, eventlog.note("observer_attached", socket=cfg.socket))
 
     async def _pump() -> None:
         async for event in client.cascade_events(
             cascade_id, event_types=OBSERVED_EVENT_TYPES, role="observer",
         ):
+            # Recorded before rendered: the lines are for whoever is watching
+            # now, the rows for whoever reads this run later, and the later
+            # reader is the one who cannot ask again.
+            row = eventlog.record(event)
+            if row is not None:
+                eventlog.append(events, row)
             for line in watcher.render(event):
                 log_line(line)
 
@@ -211,5 +223,7 @@ async def observing(cfg: RunConfig, cascade_id: str,
             exc = task.exception()
             if exc is not None:
                 log_line(f"the progress stream ended early: {type(exc).__name__}: {exc}")
+                eventlog.append(events, eventlog.note(
+                    "observer_detached", why=f"{type(exc).__name__}: {exc}"[:300]))
         with contextlib.suppress(Exception):
             await client.disconnect()

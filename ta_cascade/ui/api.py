@@ -1,9 +1,10 @@
-"""The sweep board: a read-only web view over what a sweep left on disk.
+"""The web board: a read-only web view over what a run or a sweep left on disk.
 
 Renderer #2.  :mod:`ta_cascade.richboard` draws one run in a terminal; this
-draws a sweep of hundreds of arms in a browser.  Both sit on pure state —
-:mod:`ta_cascade.board` and :mod:`ta_cascade.sweep` — which is what lets either
-be replaced without touching what decides the truth.
+draws a sweep of hundreds of arms, and one run stage by stage, in a browser.
+All three sit on pure state — :mod:`ta_cascade.board`, :mod:`ta_cascade.sweep`
+and :mod:`ta_cascade.runview` — which is what lets any renderer be replaced
+without touching what decides the truth.
 
 Deliberately **read-only and stateless**.  It starts no runs, stops none, and
 holds nothing in memory: every request re-reads the files.  A sweep is launched
@@ -11,36 +12,94 @@ with ``jaato-eval run`` from a shell and outlives this process, so restarting
 the board never disturbs a run and the board is never on a run's critical path.
 That is kb-rip's philosophy and the part of it worth copying hardest.
 
+It also asks the DAEMON nothing.  A run's stages, the persona each one was
+actually given and the profile each one actually resolved are all read from the
+session records the daemon already saved, so this board renders a run whose
+daemon has since been restarted, and a sweep arm whose workspace was kept after
+the run finished.  The alternative — attaching an observer of its own — would
+make the board stateful, would lose everything on a restart, and could say
+nothing about a run that ended before it started, which here is most of them.
+
 Starlette rather than FastAPI: the venv already has starlette and uvicorn, the
-surface is two routes, and a dependency added for two routes is a dependency
-added for ever.
+surface is a handful of routes, and a dependency added for a handful of routes
+is a dependency added for ever.
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from starlette.applications import Starlette
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
-from .. import sweep
+from .. import runview, sweep
 
 STATIC = Path(__file__).parent / "static"
 
 
-def create_app(tasks_dir: Path, results_path: Path, workspaces_dir: Optional[Path],
-               name: str) -> Starlette:
-    """An app bound to one sweep's three paths."""
+def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path] = None,
+               workspaces_dir: Optional[Path] = None, name: str = "",
+               results_dir: Optional[Path] = None,
+               workspace: Optional[Path] = None,
+               config_root: Optional[Path] = None) -> Starlette:
+    """An app over whichever of the two views its paths support.
 
-    async def api_sweep(request):
-        data = sweep.survey(tasks_dir, results_path, workspaces_dir)
-        data["name"] = name
-        data["paths"] = {"tasks": str(tasks_dir), "results": str(results_path),
-                         "workspaces": str(workspaces_dir) if workspaces_dir else None}
-        return JSONResponse(data)
+    The sweep view needs ``tasks_dir`` (the denominator) and ``results_path``
+    (what jaato-eval finished), plus ``workspaces_dir`` for arms still in
+    flight.  The run view needs ``results_dir`` (the tree a run wrote) and
+    ``workspace`` (where the daemon saved its session records).  Either set may
+    be absent, and the routes that set would serve are then not built — a
+    route that answers "no paths were given" is a route that looks broken.
 
-    async def index(request):
-        return FileResponse(STATIC / "index.html")
+    The run view is bound to ONE results tree.  A sweep arm has its own tree
+    inside its own kept workspace, so reading an arm means pointing a board at
+    that workspace (``run-board --results <ws>/results --workspace <ws>``)
+    rather than this app guessing which arm a cell meant.
+    """
+    routes: List[Route] = []
 
-    return Starlette(routes=[Route("/", index), Route("/api/sweep", api_sweep)])
+    if tasks_dir is not None and results_path is not None:
+        async def api_sweep(request):
+            data = sweep.survey(tasks_dir, results_path, workspaces_dir)
+            data["name"] = name
+            data["paths"] = {"tasks": str(tasks_dir), "results": str(results_path),
+                             "workspaces": str(workspaces_dir) if workspaces_dir else None}
+            return JSONResponse(data)
+
+        async def index(request):
+            return FileResponse(STATIC / "index.html")
+
+        routes += [Route("/", index), Route("/api/sweep", api_sweep)]
+
+    if results_dir is not None and workspace is not None:
+        async def api_runs(request):
+            return JSONResponse({"runs": runview.runs(results_dir),
+                                 "paths": {"results": str(results_dir),
+                                           "workspace": str(workspace)}})
+
+        async def api_run(request):
+            data = runview.survey(results_dir, request.path_params["ticker"],
+                                  request.path_params["date"],
+                                  workspace=workspace, config_root=config_root)
+            return JSONResponse(data)
+
+        async def api_session(request):
+            events = runview.eventlog.read(runview.eventlog.path_for(
+                results_dir, request.path_params["ticker"], request.path_params["date"]))
+            return JSONResponse(runview.session(workspace,
+                                                request.path_params["sid"], events))
+
+        async def run_index(request):
+            return FileResponse(STATIC / "run.html")
+
+        routes += [
+            Route("/run", run_index),
+            Route("/api/runs", api_runs),
+            Route("/api/run/{ticker}/{date}", api_run),
+            Route("/api/run/{ticker}/{date}/session/{sid}", api_session),
+        ]
+        if tasks_dir is None:
+            routes.append(Route("/", run_index))
+
+    return Starlette(routes=routes)
