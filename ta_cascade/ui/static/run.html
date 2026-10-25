@@ -1,0 +1,420 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>run board</title>
+<style>
+  /* Same tokens as the sweep board: this is the same page one level in. */
+  :root{
+    --bg:#fbfaf8; --panel:#fff; --ink:#1c1f23; --soft:#6b7280; --rule:#e2e0dc;
+    --pending:#d6d3cd; --running:#3b82f6; --accent:#2563eb; --pass:#2f855a;
+    --fail:#b23a2e; --warn:#b4820f; --warnink:#8a6508;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){ :root{
+    --bg:#15171a; --panel:#1d2024; --ink:#e6e4e0; --soft:#9aa1aa; --rule:#31363c;
+    --pending:#3a3f45; --running:#60a5fa; --accent:#8ea2ff; --pass:#4ade80;
+    --fail:#f87171; --warn:#fbbf24; --warnink:#fbbf24; color-scheme:dark; } }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",sans-serif}
+  .wrap{max-width:1500px;margin:0 auto;padding:18px 20px 40px}
+  h1{font-size:1.2rem;margin:0;font-weight:600}
+  h2{font-size:.72rem;margin:0;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+  .m{font-family:ui-monospace,monospace;font-variant-numeric:tabular-nums}
+  .soft{color:var(--soft)}
+  .warn{color:var(--warnink)}
+  .bad{color:var(--fail)}
+  .ok{color:var(--pass)}
+
+  .tiles{display:grid;gap:.5rem;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:.8rem 0}
+  .tile{background:var(--panel);border:1px solid var(--rule);border-radius:5px;padding:.5rem .6rem}
+  .tile .k{font-size:.64rem;letter-spacing:.09em;text-transform:uppercase;color:var(--soft)}
+  .tile .v{font-size:1.15rem;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.3}
+  .tile .n{font-size:.7rem;color:var(--soft)}
+
+  .rail{display:flex;gap:2px;height:7px;margin:.1rem 0 1rem}
+  .rail i{flex:1 1 0;border-radius:2px;background:var(--pending)}
+  .rail i.done{background:var(--pass)} .rail i.failed{background:var(--fail)}
+  .rail i.running{background:var(--running);animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.rail i.running{animation:none}}
+
+  .cols{display:flex;flex-wrap:wrap;gap:1.2rem;align-items:flex-start}
+  main{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:1.1rem}
+  .band>.hd{display:flex;align-items:baseline;gap:.5rem;margin-bottom:.4rem}
+  .cards{display:grid;gap:.6rem;grid-template-columns:repeat(auto-fill,minmax(252px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--rule);border-left:3px solid var(--pending);
+        border-radius:6px;padding:.6rem .7rem;min-width:0}
+  .card.done{border-left-color:var(--pass)} .card.failed{border-left-color:var(--fail)}
+  .card.running{border-left-color:var(--running)}
+  .card.sel{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .card .nm{font-size:.84rem;font-weight:600}
+  .card .what{font-size:.72rem;color:var(--soft);line-height:1.35;margin-top:.2rem;min-height:2.7em}
+
+  .icons{display:flex;gap:3px;flex-wrap:wrap;margin:.45rem 0}
+  .ib{width:26px;height:26px;padding:0;border:1px solid var(--rule);border-radius:6px;
+      background:var(--panel);color:var(--soft);display:inline-grid;place-items:center;cursor:pointer}
+  .ib:hover{color:var(--ink);border-color:var(--soft)}
+  .ib[aria-pressed="true"]{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .ib svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.7;
+          stroke-linecap:round;stroke-linejoin:round}
+
+  .gauge{height:5px;background:var(--pending);border-radius:3px;overflow:hidden;margin:.15rem 0 .4rem}
+  .gauge i{display:block;height:100%;background:var(--pass)}
+  .gauge i.mid{background:var(--warn)} .gauge i.hi{background:var(--fail)}
+  .calls{display:flex;gap:2px;height:4px;margin-bottom:.3rem}
+  .calls i{border-radius:2px;background:var(--soft)}
+  .calls i.host{background:var(--running)}
+  .st{font-size:.7rem;color:var(--soft);line-height:1.4}
+
+  aside{flex:1 1 400px;min-width:300px;position:sticky;top:18px;background:var(--panel);
+        border:1px solid var(--rule);border-radius:6px;display:flex;flex-direction:column;
+        max-height:calc(100vh - 36px)}
+  aside header{padding:.6rem .7rem;border-bottom:1px solid var(--rule)}
+  .tabs{display:flex;gap:3px;flex-wrap:wrap;margin-top:.45rem}
+  .tb{border:1px solid var(--rule);background:var(--panel);color:var(--soft);border-radius:5px;
+      padding:2px 7px;font:500 .7rem ui-sans-serif,sans-serif;cursor:pointer}
+  .tb[aria-pressed="true"]{color:var(--ink);border-color:var(--ink)}
+  .log{padding:.6rem .7rem;overflow:auto;display:flex;flex-direction:column;gap:.45rem}
+  .log pre{white-space:pre-wrap;margin:0;font:.76rem/1.5 ui-monospace,monospace}
+  .log .thought pre{color:var(--soft);font-style:italic}
+  .log .tool{border-left:3px solid var(--pending);padding:2px 0 2px 7px;border-radius:0 4px 4px 0;
+             background:var(--bg)}
+  .log .tool.ok{border-left-color:var(--pass)} .log .tool.bad{border-left-color:var(--fail)}
+  .log .tool.open{border-left-color:var(--running)}
+  .log summary{cursor:pointer;color:var(--soft);font-size:.72rem}
+  .log .work{font-size:.72rem;color:var(--soft);border-top:1px solid var(--rule);padding-top:.45rem}
+  .log .box{background:var(--bg);border:1px solid var(--rule);border-radius:5px;padding:.45rem .5rem}
+  table{border-collapse:collapse;width:100%;font-size:.72rem}
+  td,th{text-align:left;padding:2px 6px 2px 0}
+  button{font:inherit}
+</style>
+
+<div class="wrap">
+  <div style="display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap">
+    <h1 id="title">run board</h1>
+    <span class="m soft" id="sub" style="font-size:.78rem"></span>
+    <span style="flex:1"></span>
+    <select id="pickrun" class="m" style="font-size:.74rem" aria-label="Choose a run"></select>
+  </div>
+
+  <div class="tiles" id="tiles"></div>
+  <div class="rail" id="rail"></div>
+
+  <div class="cols">
+    <main id="bands"></main>
+    <aside id="drawer" hidden>
+      <header>
+        <div style="display:flex;align-items:baseline;gap:.5rem">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.84rem;font-weight:600" id="dname"></div>
+            <div class="m soft" style="font-size:.7rem" id="dsub"></div>
+          </div>
+          <button class="ib" id="dclose" style="width:22px;height:22px" aria-label="Close the drawer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <div class="tabs" id="dtabs"></div>
+      </header>
+      <div class="log" id="dlog"></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const num = n => (n == null ? "—" : Number(n).toLocaleString("en-US"));
+const secs = n => (n == null ? "—" : `${Number(n).toFixed(1)} s`);
+
+// Icons, one per artefact a stage can carry. Drawn only when the stage has it:
+// the row is the capability row, so a card never offers a thing that is absent.
+const ICON = {
+  transcript: '<path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.4-4.2A8 8 0 1 1 21 12z"/><path d="M8.5 11h7M8.5 14.5h4"/>',
+  persona: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c.6-3.6 3.5-5.6 7-5.6s6.4 2 7 5.6"/>',
+  profile: '<path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h8M16 17h4"/><circle cx="16" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="14" cy="17" r="2"/>',
+  schema: '<path d="M9 4H7.5A2.5 2.5 0 0 0 5 6.5v3A2.5 2.5 0 0 1 2.5 12A2.5 2.5 0 0 1 5 14.5v3A2.5 2.5 0 0 0 7.5 20H9"/><path d="M15 4h1.5A2.5 2.5 0 0 1 19 6.5v3a2.5 2.5 0 0 0 2.5 2.5a2.5 2.5 0 0 0-2.5 2.5v3a2.5 2.5 0 0 1-2.5 2.5H15"/>',
+  gate: '<path d="M3.5 5h17l-6.5 7.5V20l-4-2.2v-5.3z"/>',
+  tools: '<path d="M14.5 6.2a4.2 4.2 0 0 1 5.6 5.6l-8 8a2.3 2.3 0 0 1-3.3-3.3z"/><path d="M9.5 4.5 4 10l2.5 2.5"/>',
+  references: '<path d="M4 5.5A2 2 0 0 1 6 3.5h5v17H6a2 2 0 0 0-2 2z"/><path d="M20 5.5a2 2 0 0 0-2-2h-5"/><path d="M11 20.5h7a2 2 0 0 1 2 2V5.5"/>',
+  section: '<path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8z"/><path d="M14 3v5h5M8.5 13h7M8.5 16.5h4.5"/>',
+  budget: '<path d="M3.5 18a9 9 0 1 1 17 0z"/><path d="M12 18 16 10"/>',
+};
+const LABEL = {
+  transcript: "transcript", persona: "persona as the model received it",
+  profile: "profile as the session resolved it", schema: "completion schema",
+  gate: "completion gate", tools: "host tools", references: "references",
+  section: "rendered section", budget: "budget ceiling",
+};
+
+// Which tabs a stage offers. `transcript` and `budget` always: every stage is a
+// session with a ceiling. The rest follow the capability set, and persona and
+// profile need the daemon's saved record, which a stage in flight may not have.
+function tabsFor(s) {
+  const c = s.capabilities || {};
+  const out = ["transcript"];
+  if (s.has_record) out.push("persona", "profile");
+  if (c.schema) out.push("schema");
+  if ((c.gates || []).length) out.push("gate");
+  if ((s.host_tools || []).length) out.push("tools");
+  if (c.references) out.push("references");
+  if ((c.sections || []).length) out.push("section");
+  out.push("budget");
+  return out;
+}
+
+let run = null;        // the last survey
+let sel = null;        // {stage, tab}
+let where = null;      // {ticker, date}
+
+function card(s) {
+  const c = s.capabilities || {};
+  const b = s.budget || {};
+  const pct = b.fraction_used == null ? null : Math.round(100 * b.fraction_used);
+  const cls = pct == null ? "" : pct >= 80 ? "hi" : pct >= 50 ? "mid" : "";
+  const on = sel && sel.stage === s.stage;
+  const icons = tabsFor(s).map(t =>
+    `<button class="ib" data-stage="${esc(s.stage)}" data-tab="${t}"
+       aria-pressed="${on && sel.tab === t}" title="${esc(LABEL[t])}"
+       aria-label="${esc(s.stage)}: ${esc(LABEL[t])}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICON[t]}</svg></button>`).join("");
+
+  // Tool calls BY NAME, never bucketed into a taxonomy of ours: a stage's
+  // calls are whatever the model called, and `host` is the one distinction we
+  // can make honestly, because we are the ones who registered those.
+  const by = (s.calls && s.calls.by_tool) || [];
+  const bar = by.length
+    ? by.map(t => `<i class="${t.host ? "host" : ""}" style="flex:${t.n} 1 0"
+         title="${t.n} × ${esc(t.tool)}${t.host ? " (host tool)" : ""}"></i>`).join("")
+    : `<i style="flex:1 1 0;background:var(--pending)" title="no tool calls recorded"></i>`;
+
+  const turns = b.turns_disagree
+    ? `<span class="warn" title="the ceiling counts one provider binding; the session record counts the conversation's turns">turns ${num(b.turns_counted)}/${num((c.limits||{}).turns)} · record says ${num(b.turns_recorded)}</span>`
+    : `turns ${num(b.turns_counted)}/${num((c.limits || {}).turns)}`;
+
+  const note = s.failed ? `<span class="bad">${esc(s.failed)}</span>`
+    : s.consumption_error ? `<span class="warn">unmeasured: ${esc(s.consumption_error)}</span>`
+    : s.state === "running" ? `<span class="m" style="color:var(--running)">open now</span>`
+    : `<span class="m">${esc(s.reason || "")}</span>`;
+
+  return `<article class="card ${s.state}${on ? " sel" : ""}">
+    <div class="nm">${esc(s.stage)} <span class="soft" style="font-weight:400;font-size:.72rem">${esc(s.mode || "?")}</span></div>
+    <div class="what">${esc(c.description || "")}</div>
+    <div class="icons">${icons}</div>
+    <div class="st">budget <b class="m">${pct == null ? "—" : pct + "%"}</b>
+      <span class="m">${b.binds ? "· " + esc(b.binds) + " binds" : ""}</span></div>
+    <div class="gauge"><i class="${cls}" style="width:${pct || 0}%"></i></div>
+    <div class="calls">${bar}</div>
+    <div class="st m">${secs(s.seconds)} · ${num(s.tool_calls)} calls · ${num(s.tokens)} tok</div>
+    <div class="st m">${turns}</div>
+    <div class="st">${note}</div>
+  </article>`;
+}
+
+function render(d) {
+  run = d;
+  $("#title").textContent = `${d.ticker} · ${d.trade_date}`;
+  $("#sub").textContent = d.paths.results;
+
+  const v = d.verdict || {}, m = d.money || {}, e = d.effort || {}, c = d.counts || {};
+  // Money: null is withheld on purpose, never zero. A subscription provider
+  // reports effort and no cost, and a part-priced sum would read as a bill.
+  const money = m.cost_usd != null ? `$${m.cost_usd.toFixed(3)}`
+    : m.measured ? "not priced" : "unmeasured";
+  const moneyNote = m.cost_usd != null ? `${m.priced} of ${m.sessions} sessions`
+    : `${m.measured} of ${m.sessions} measured, ${m.priced} priced`;
+
+  const tile = (k, val, n, cls) =>
+    `<div class="tile"><div class="k">${esc(k)}</div><div class="v ${cls || ""}">${esc(val)}</div>` +
+    (n ? `<div class="n">${esc(n)}</div>` : "") + `</div>`;
+
+  $("#tiles").innerHTML =
+    tile("rating", v.rating || "—", `plan ${v.plan || "—"} → trade ${v.trade || "—"}`) +
+    tile("stages", `${c.done} / ${c.planned}`, `${c.running} open · ${c.failed} failed`,
+         c.failed ? "bad" : "") +
+    tile("money", money, moneyNote, m.cost_usd == null && m.measured ? "warn" : "") +
+    tile("effort", secs(e.seconds), `${num(e.tokens)} tok · ${num(e.tool_calls)} calls`) +
+    tile("observer", d.observer, d.observer === "attached" ? "events recorded" : "see events.jsonl",
+         d.observer === "attached" ? "ok" : "warn");
+
+  // The rail is the plan: this pipeline's shape is a pure function of the
+  // config, so what is LEFT is knowable, which is the one thing a stream of
+  // log lines cannot show.
+  $("#rail").innerHTML = (d.stages || []).map(s =>
+    `<i class="${s.state}" title="${esc(s.stage)} · ${esc(s.state)} · ${secs(s.seconds)}"></i>`).join("");
+
+  $("#bands").innerHTML = (d.bands || []).map(b => `<section class="band">
+      <div class="hd"><h2>${esc(b.name)}</h2>
+        <span class="m soft" style="font-size:.7rem">${b.stages.length} stage${b.stages.length === 1 ? "" : "s"}</span></div>
+      <div class="cards">${b.stages.map(card).join("")}</div>
+    </section>`).join("");
+
+  if (sel) drawRef();
+}
+
+// ---- the drawer -----------------------------------------------------------
+// Two sources, and it always says which: `record` is the daemon's own complete
+// history, `events` is the tool-call skeleton this run wrote down while the
+// record did not exist yet, `none` means neither — which is shown as such,
+// because an empty conversation and an unsaved one are different facts.
+let shown = null;      // the last /session payload
+
+function drawRef() {
+  const s = (run.stages || []).find(x => x.stage === sel.stage);
+  if (!s) return;
+  $("#drawer").hidden = false;
+  $("#dname").textContent = s.stage;
+  $("#dsub").textContent = `${s.mode || "?"} · ${s.session_id || "no session id"}`;
+  $("#dtabs").innerHTML = tabsFor(s).map(t =>
+    `<button class="tb" data-stage="${esc(s.stage)}" data-tab="${t}"
+       aria-pressed="${sel.tab === t}">${esc(t)}</button>`).join("");
+  body(s);
+}
+
+function toolLine(p) {
+  const cls = p.ok === null || p.ok === undefined ? "open" : p.ok ? "ok" : "bad";
+  const mark = p.ok === null || p.ok === undefined ? "…" : p.ok ? "✓" : "✗";
+  const args = Object.entries(p.args || {}).map(([k, v]) => `${esc(k)}=${esc(v)}`).join(", ");
+  const err = p.error ? `<div class="bad" style="font-size:.72rem">${esc(p.error)}` +
+    ((p.detail || []).length ? "<br>" + p.detail.map(esc).join("<br>") : "") + `</div>` : "";
+  const un = p.untrusted ? ` <span class="warn" title="the daemon marked this result untrusted">untrusted</span>` : "";
+  return `<div class="tool ${cls}"><div class="m" style="font-size:.74rem">${mark} ${esc(p.tool)}(<span class="soft">${args}</span>)${un}</div>${err}</div>`;
+}
+
+function body(s) {
+  const log = $("#dlog");
+  const at = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  const open = [...log.querySelectorAll("details")].map(d => d.open);
+  const c = s.capabilities || {}, b = s.budget || {};
+  let h = "";
+
+  if (sel.tab === "transcript") {
+    if (!shown) h = `<div class="soft">reading the session…</div>`;
+    else if (shown.source === "none")
+      h = `<div class="box warn">The daemon has not saved this session's record, and this run
+           recorded no events for it. jaato writes a record at tool calls and turn ends, so a
+           stage that has called nothing yet has none.</div>`;
+    else {
+      h = shown.parts.map(p =>
+        p.kind === "prompt" ? `<details><summary>Prompt (${p.text.length} chars)</summary><pre>${esc(p.text)}</pre></details>`
+        : p.kind === "thought" ? `<div class="thought"><span class="soft" style="font-size:.7rem">thought</span><pre>${esc(p.text)}</pre></div>`
+        : p.kind === "text" ? `<pre>${esc(p.text)}</pre>`
+        : toolLine(p)).join("");
+      const src = shown.source === "record"
+        ? `from the daemon's saved record · ended ${esc(shown.end_reason || "—")} · ${num(shown.turns)} turns`
+        : `from this run's events.jsonl — tool calls only, because the model's words are not recorded (see eventlog)`;
+      h += `<div class="work">${src}</div>`;
+    }
+  } else if (sel.tab === "persona") {
+    h = shown && shown.persona
+      ? `<div class="soft" style="font-size:.72rem">The persona as the model actually received it —
+          the shared base layer, then this stage's own, with its params substituted. Most of the
+          length is the base layer every persona sits on.</div>
+         <div class="box"><table>${Object.entries(shown.agent_params || {}).map(([k, v]) =>
+            `<tr><td class="soft">${esc(k)}</td><td class="m">${esc(v)}</td></tr>`).join("")}</table></div>
+         <pre>${esc(shown.persona)}</pre>`
+      : `<div class="box warn">No saved record for this session, so what the model was given cannot be shown.</div>`;
+  } else if (sel.tab === "profile") {
+    h = shown && shown.profile && Object.keys(shown.profile).length
+      ? `<div class="soft" style="font-size:.72rem">The profile as this session RESOLVED it — the
+          snapshot the daemon saved, not what the tree declares now.</div>
+         <pre>${esc(JSON.stringify(shown.profile, null, 2))}</pre>`
+      : `<div class="box warn">No saved record for this session, so its resolved profile is unknown.</div>`;
+  } else if (sel.tab === "schema") {
+    h = `<div class="soft" style="font-size:.72rem">The schema IS signal_completion's parameters, so
+         its fields are flat at the top level.</div>
+         <pre>${esc(c.schema || "")}</pre>
+         <div class="box"><table>${Object.entries(s.completion || {}).map(([k, v]) =>
+            `<tr><td class="soft">${esc(k)}</td><td class="m">${esc(v)}</td></tr>`).join("")}</table></div>`;
+  } else if (sel.tab === "gate") {
+    h = `<div class="soft" style="font-size:.72rem">A gate is a pure function of the payload; its
+         errors go back to the model as instructions for the retry. Its refusals appear in the
+         transcript as a failed signal_completion.</div>
+         <pre>${(c.gates || []).map(esc).join("\n")}</pre>`;
+  } else if (sel.tab === "tools") {
+    h = `<div class="soft" style="font-size:.72rem">Registered as client_tools after connect and
+         before create_session. Each handler's deadline is DERIVED from what the daemon reports and
+         checked against it once per session.</div>
+         <pre>${(s.host_tools || []).map(esc).join("\n")}</pre>`;
+  } else if (sel.tab === "references") {
+    h = `<div class="soft" style="font-size:.72rem">Wired as references(preload) with preselected
+         entries — obligations the stage must read, not a library to search. Its readFile /
+         listReferences / selectReferences calls in the transcript are these.</div>`;
+  } else if (sel.tab === "section") {
+    h = `<div class="soft" style="font-size:.72rem">The gate's render() writes this from the payload
+         into the profile entry's output: template.</div>
+         <pre>${(c.sections || []).map(esc).join("\n")}</pre>`;
+  } else if (sel.tab === "budget") {
+    h = `<div class="soft" style="font-size:.72rem">Per session, summed across its turns, abort at
+         100%. The binding dimension is the one worth tuning; the rest is headroom nobody used.</div>
+      <table><tr><th>dimension</th><th>used</th><th>limit</th><th>of ceiling</th></tr>` +
+      (b.dimensions || []).map(d => `<tr><td class="${d.name === b.binds ? "" : "soft"}">${esc(d.name)}${d.name === b.binds ? " ←" : ""}</td>
+         <td class="m">${d.used == null ? "—" : num(d.used)}</td><td class="m">${num(d.limit)}</td>
+         <td class="m">${d.ratio == null ? "not priced" : Math.round(100 * d.ratio) + "%"}</td></tr>`).join("") +
+      `</table>` +
+      (b.turns_disagree ? `<div class="box warn">The ceiling counted ${num(b.turns_counted)} turn(s);
+        the session record counts ${num(b.turns_recorded)}. To budget_control a turn is one provider
+        binding, so this dimension cannot bound a model's tool loop — tool_calls and seconds are what
+        actually bind here.</div>` : "") +
+      `<div class="work">next rung: ${esc(JSON.stringify(b.next_rung || {}))}</div>`;
+  }
+
+  log.innerHTML = h;
+  log.querySelectorAll("details").forEach((d, i) => { d.open = !!open[i]; });
+  if (at) log.scrollTop = log.scrollHeight;
+}
+
+async function loadSession() {
+  if (!sel || !where) return;
+  const s = (run.stages || []).find(x => x.stage === sel.stage);
+  if (!s || !s.session_id) { shown = {source: "none", parts: []}; return drawRef(); }
+  const want = s.session_id;
+  try {
+    const r = await fetch(`/api/run/${where.ticker}/${where.date}/session/${want}`, {cache: "no-store"});
+    const got = await r.json();
+    if (sel && got.session_id === want) { shown = got; drawRef(); }
+  } catch (e) { /* the next tick re-reads; a display must not throw */ }
+}
+
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("[data-stage]");
+  if (b) {
+    const same = sel && sel.stage === b.dataset.stage;
+    sel = {stage: b.dataset.stage, tab: b.dataset.tab};
+    if (!same) shown = null;
+    drawRef();
+    loadSession();
+    return;
+  }
+  if (ev.target.closest("#dclose")) { sel = null; shown = null; $("#drawer").hidden = true; }
+});
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape" && sel) { sel = null; shown = null; $("#drawer").hidden = true; }
+});
+
+async function tick() {
+  try {
+    if (!where) {
+      const list = await (await fetch("/api/runs", {cache: "no-store"})).json();
+      if (!list.runs.length) { $("#sub").textContent = `no runs under ${list.paths.results}`; return; }
+      $("#pickrun").innerHTML = list.runs.map(r =>
+        `<option value="${esc(r.ticker)}/${esc(r.trade_date)}">${esc(r.ticker)} ${esc(r.trade_date)}</option>`).join("");
+      const hash = location.hash.slice(1);
+      const first = list.runs.some(r => `${r.ticker}/${r.trade_date}` === hash)
+        ? hash : `${list.runs[0].ticker}/${list.runs[0].trade_date}`;
+      $("#pickrun").value = first;
+      const [t, d] = first.split("/");
+      where = {ticker: t, date: d};
+    }
+    render(await (await fetch(`/api/run/${where.ticker}/${where.date}`, {cache: "no-store"})).json());
+    if (sel) await loadSession();
+  } catch (e) { $("#sub").textContent = "cannot reach the board: " + e; }
+}
+
+$("#pickrun").addEventListener("change", ev => {
+  const [t, d] = ev.target.value.split("/");
+  where = {ticker: t, date: d}; sel = null; shown = null;
+  $("#drawer").hidden = true; location.hash = ev.target.value; tick();
+});
+
+tick(); setInterval(tick, 2000);
+</script>

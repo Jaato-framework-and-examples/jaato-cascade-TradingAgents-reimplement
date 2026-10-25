@@ -280,6 +280,12 @@ python -m ta_cascade analyze BTC-USD 2026-01-15 --asset-type crypto --analysts m
 .venv/bin/pytest -q tests --ignore=tests/test_pipeline_echo.py   # unit, <1 s, no daemon
 .venv/bin/pytest -q tests/test_pipeline_echo.py                  # end to end, ~5 min, needs a REACHABLE daemon
 
+# the boards (read-only, daemon-free, `pip install -e .[board]`)
+python -m ta_cascade run-board --port 8098              # one run: a card per stage, a drawer per session
+python -m ta_cascade run-board --results /tmp/pilot-ws/NVDA-2026-04-03/results \
+                              --workspace /tmp/pilot-ws/NVDA-2026-04-03   # ... or one sweep ARM
+python -m ta_cascade sweep-board pilot --port 8099 [--workspaces DIR]     # the whole matrix
+
 # backtests: the driver as a jaato-eval ARM (harness.kind: driver, jaato#1110)
 python -m ta_cascade backtest-tasks pilot --tickers NVDA,AMD --from 2026-04-03 --to 2026-08-28 --every 7
 jaato-eval run backtests/pilot/tasks --profile-set openrouter_sonnet --socket /tmp/jaato.sock \
@@ -354,17 +360,47 @@ ta_cascade/                the driver (Python; the only code that talks to jaato
                            dated high/low, entry/stop/target, the rating; the holding period after
                            the as-of date when bars exist (a backtest cell). Drawn by code from the
                            same bars as the snapshot; the model never sees it. matplotlib, driver-side.
-  board.py                 BoardState: ONE run's progress as drawable state (pure, no renderer)
+  board.py                 BoardState: ONE run's progress as drawable state (pure, no renderer),
+                           held in memory by the driver while it runs
+  runview.py               ONE run's stages as drawable state read from DISK ALONE, afterwards or
+                           mid-flight: sessions.jsonl (which stages ran, what each cost),
+                           events.jsonl (what happened inside one), state.json (the verdict) and
+                           the daemon's own .jaato/sessions/<id>.json (the full history, the
+                           persona AS RENDERED, the profile AS RESOLVED). Asks the daemon nothing,
+                           so it renders a run whose daemon has since restarted. A stage's
+                           capability set — schema, gate, section, references, host tools — decides
+                           what its card offers and is READ, never assumed: the record's
+                           `profile_snapshot` and `_base_<agent>.yaml` spell it with the same keys,
+                           so one reader serves both, the record preferred because it is what the
+                           session actually resolved. BANDS mirrors pipeline.plan_of and a test
+                           asserts every persona sits in exactly one band.
+  eventlog.py              the run's cascade events as structured rows (pure, no SDK import),
+                           written by sessions.observing() beside the session log. Records the
+                           FOUR low-volume events — one per session, one per tool call, with each
+                           call's OUTCOME, which the driver never learns because a tool call that
+                           failed inside a stage is not a stage that failed. Deliberately NOT
+                           AgentOutputEvent: the per-client queue is bounded (2048) and drops the
+                           oldest lossy chunks, no event carries a sequence number, so a client
+                           cannot tell a dropped chunk from a model that said nothing. The words
+                           come from the record the daemon saves whole, so the drawer degrades to
+                           complete-but-delayed, never to silently-missing.
   sweep.py                 a SWEEP's progress as drawable state (pure, no renderer): reads the
                            task dirs (the denominator), results.jsonl (finished arms, with
                            usage.cost_usd) and each arm workspace's sessions.jsonl (what is open
                            now). Money and effort aggregate over ARMS, states over CELLS — keying
                            results by cell drops every repeat but the last, and read the pilot's
                            spend as $9 against a real $47.
-  ui/api.py, ui/static/    renderer #2: a READ-ONLY starlette board over those files.
-                           `python -m ta_cascade sweep-board <name> --port 8099 [--workspaces DIR]`.
-                           Starts no run, stops none, holds nothing: a sweep is launched with
-                           jaato-eval from a shell and outlives the board. `pip install -e .[board]`.
+  ui/api.py, ui/static/    renderer #2: a READ-ONLY starlette board over those files, two views.
+                           `python -m ta_cascade sweep-board <name> --port 8099 [--workspaces DIR]`
+                           draws the matrix; `python -m ta_cascade run-board [--results DIR]
+                           [--workspace DIR] --port 8098` draws ONE run as a card per stage, each
+                           card's icon row being its capability row, with a drawer over the
+                           session: the prompt collapsed, the model's words, every tool call with
+                           its outcome and a gate's refusal message. Starts no run, stops none,
+                           holds nothing, and asks the daemon nothing: every request re-reads the
+                           files. A sweep arm keeps its own results tree inside its own workspace,
+                           so reading one means pointing run-board at THAT pair rather than having
+                           the board guess which arm a cell meant. `pip install -e .[board]`.
   richboard.py             the live two-panel view; the ONLY module that imports rich
   observer.py              cascade events -> trace lines; imports no SDK (testable daemon-free)
   contract.py              the jaato-eval driver contract (JAATO_EVAL_*): workspace, config root,
@@ -392,7 +428,11 @@ backtests/<name>/          generated matrices: fixture/ (empty) + tasks/<TICKER>
   instructions/00-team.md             base layer every persona sits on
   completion_schemas/*.json           5 typed payloads (analyst_report, research_plan, trader_proposal,
                                       portfolio_decision, reflection)
-  scripts/processors/*.py             2 completion gates: analyst_report.py, price_fields.py
+  scripts/processors/*.py             3 completion gates: analyst_report.py (the 4 analysts),
+                                      price_fields.py (trader, portfolio_manager) and
+                                      rules_read.py (trader). The trader carries TWO, concatenated
+                                      as the inheritance rule says. research_manager and reflector
+                                      declare a schema and NO processor, so they render no section.
                                       NB: `.jaato/scripts/` is code the DAEMON runs inside the
                                       runner, and it must be SELF-CONTAINED: stdlib plus its
                                       own neighbours in that directory, never an import of
@@ -699,6 +739,26 @@ for `rules_read`.
     The host-scoped escape is
     `JAATO_IPC_CONFINE_DEFAULT=off`, announced at WARNING at startup — an
     operator's decision about this host, never a per-run workaround.
+13. **`budget_control.limits.turns` does not count the stage's turns, and so
+    cannot bound a tool loop.** Measured 2026-10-25 over the ten sessions of
+    the NVDA 2026-10-17 run: `budget_usage.turns` is **1.0 for every one of
+    them**, while the session record's own `turn_count` runs 1 … 7, and
+    `turn_accounting` holds a single `{"turn": 0}` entry listing all of a
+    session's calls. To `budget_control` a "turn" is one provider BINDING, not
+    a step of the model's tool loop. Consequences, both real: the **trader
+    reached `turn_count` 7 against its declared `turns: 6`** and
+    `budget_exhausted_reason` stayed `None` — the `degrade: [{at: 100, action:
+    abort}]` rung never fired; and the dimension looks like the binding one on
+    any stage whose tool use is light (1/8 beats 5/60), so a reader told
+    "turns binds" would tune a ceiling that does nothing. **What actually
+    bounds a stage here is `tool_calls` and `seconds`.** This is the same shape
+    as `max_turns`, which jaato#1068 removed "having measured that it was
+    compared against a turn counter in no path of the framework" — one key
+    later. `runview` reports BOTH numbers and flags the disagreement rather
+    than picking one; the `turns` entries in every `_base_<agent>` ceiling have
+    not been changed, because re-sizing a ceiling is a decision about this
+    pipeline and not a consequence of reading its telemetry. NOT yet filed
+    upstream.
 
 ---
 

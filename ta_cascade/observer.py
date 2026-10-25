@@ -31,15 +31,33 @@ from typing import Any, Dict, List
 OBSERVED_EVENT_TYPES = [
     "AgentCreatedEvent",
     "ToolCallStartEvent",
+    "ToolCallEndEvent",
+    "SessionTerminatedEvent",
 ]
-"""The two the daemon is asked for.
+"""The four the daemon is asked for.
 
-Narrow on purpose: the per-client event queue is bounded and lossy exactly
-for high-volume traffic (``JAATO_IPC_EVENT_QUEUE_MAX``), so an observer that
-subscribes to everything pays for events it will not draw.  These two answer
-"which stage is live" and "what is it doing", which is the whole job — the
-driver already knows when a stage finished, because it is the thing awaiting
-the payload.
+Still narrow on purpose: the per-client event queue is bounded and lossy
+exactly for high-volume traffic (``JAATO_IPC_EVENT_QUEUE_MAX``, default 2048,
+past which the oldest lossy chunks drop), so an observer that subscribes to
+everything pays for events it will not draw.
+
+The first two answer "which stage is live" and "what is it doing", which is
+the whole job of the TERMINAL view: the driver already knows when a stage
+finished, because it is the thing awaiting the payload.  The last two were
+added for :mod:`ta_cascade.eventlog`, which writes the stream down for a
+reader who was not there and needs a tool call's OUTCOME and a session's end
+— facts the driver does not learn, because a tool call that failed inside a
+stage is not a stage that failed.  :meth:`StageObserver.render` draws neither,
+so the terminal output is unchanged; one event per tool call and one per
+session is also well under any volume the queue bound is about.
+
+``AgentOutputEvent`` is deliberately NOT here.  It carries the model's words
+as they are produced and is the one class this pipeline would emit in volume;
+no event in :mod:`jaato_sdk.events` carries a sequence number, so a client
+cannot tell a dropped chunk from a model that said nothing, and a transcript
+assembled from it would be silently incomplete while looking complete.  The
+words are read from the session record the daemon saves whole instead — see
+:mod:`ta_cascade.eventlog` for the argument in full.
 """
 
 _INDENT = "   · "
