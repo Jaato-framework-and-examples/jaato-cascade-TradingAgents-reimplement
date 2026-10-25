@@ -448,6 +448,21 @@ def survey(results_dir: Path, ticker: str, trade_date: str, *,
     }
 
 
+def session_ids(results_dir: Path, ticker: str, trade_date: str) -> List[str]:
+    """Every session id this run's log names, in the order they started.
+
+    The allow-list a reader is held to: a session can be asked for only if the
+    run actually recorded it.  See :func:`ta_cascade.ui.api.known_session` for
+    why that is the check rather than a pattern.
+    """
+    out = []
+    for line in _read_jsonl(Path(results_dir) / ticker / trade_date / "sessions.jsonl"):
+        sid = line.get("session_id")
+        if line.get("event") == "started" and sid and sid not in out:
+            out.append(sid)
+    return out
+
+
 def runs(results_dir: Path) -> List[Dict[str, str]]:
     """Every run under a results tree, newest trade date first.
 

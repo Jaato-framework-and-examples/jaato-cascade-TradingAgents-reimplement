@@ -152,9 +152,57 @@ def _sweep_board(args) -> int:
     app = create_app(tasks_dir=base / "tasks", results_path=base / "results.jsonl",
                      workspaces_dir=Path(args.workspaces) if args.workspaces else None,
                      name=args.name)
-    print(f"sweep board for {args.name} on http://{args.host}:{args.port}  (ctrl-c to stop)")
+    _announce(f"sweep board for {args.name}", args.host, args.port,
+              "every cell's state, cost and open stage")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
+
+
+def _lan_address() -> str:
+    """This host's address on the network it would route out of, or "".
+
+    A UDP socket is CONNECTED and never written to: connect on a datagram
+    socket only fixes the local end, so this sends no packet and needs nothing
+    to be reachable.  Used to print a URL a reader can actually paste; the
+    alternative, resolving the hostname, answers 127.0.1.1 on a Debian host
+    and would print a URL that works nowhere.
+    """
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))        # TEST-NET-1: reserved, unroutable
+        return probe.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        probe.close()
+
+
+def _announce(what: str, host: str, port: int, serves: str) -> None:
+    """Say where the board is, and what binding beyond loopback means.
+
+    The board is read-only, but read-only is not the same as harmless: it
+    serves whole transcripts, each stage's prompt and the persona the model was
+    given.  It carries NO authentication, so on a routable interface everyone
+    who can reach the port can read all of that.  What it does not serve is a
+    credential: the session records hold `pass://` references and `${VAR}`
+    placeholders, never a resolved value, because the secret is resolved
+    daemon-side at call time and never persisted (verified 2026-10-25 across
+    every record in this workspace).
+    """
+    loopback = host in ("127.0.0.1", "localhost", "::1")
+    print(f"{what} on http://{host}:{port}  (ctrl-c to stop)", flush=True)
+    if loopback:
+        print("  bound to loopback: reachable from this host only. "
+              "Pass --host 0.0.0.0 to serve your intranet.", flush=True)
+        return
+    address = _lan_address()
+    if address and address != host:
+        print(f"  reachable at http://{address}:{port}", flush=True)
+    print(f"  NO AUTHENTICATION: anyone who can reach this port reads {serves}.", flush=True)
+    print("  It serves no credential — records keep pass:// references, never "
+          "resolved values — and it is read-only: it starts no run and stops none.", flush=True)
 
 
 def _run_board(args) -> int:
@@ -171,7 +219,8 @@ def _run_board(args) -> int:
 
     app = create_app(results_dir=args.results, workspace=args.workspace,
                      config_root=args.config_root)
-    print(f"run board over {args.results} on http://{args.host}:{args.port}  (ctrl-c to stop)")
+    _announce(f"run board over {args.results}", args.host, args.port,
+              "every stage's transcript, prompt and persona")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 

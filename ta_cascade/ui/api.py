@@ -38,6 +38,37 @@ from .. import runview, sweep
 STATIC = Path(__file__).parent / "static"
 
 
+def known_run(results_dir: Path, ticker: str, trade_date: str) -> bool:
+    """Whether this results tree actually holds that run.
+
+    **A request may name only a run that exists**, and that is the whole input
+    validation — by MEMBERSHIP, not by pattern.  Two reasons it is the right
+    check.  It makes path traversal structurally impossible rather than
+    filtered: the names a reader may ask for are the ones the driver itself
+    wrote, so no crafted segment reaches the filesystem at all.  And it cannot
+    go stale, where a regex for "what a ticker looks like" would have to be
+    kept in step with every symbol the data layer accepts (``BTC-USD``,
+    ``^GSPC``) and would silently refuse a legitimate run the day it fell
+    behind.
+
+    Measured before this existed: ``GET /api/run/%2e%2e/%2e%2e`` matched the
+    route, reached :func:`ta_cascade.runview.survey` with ``ticker=".."``, and
+    raised ``ValueError: Invalid isoformat string: '..'`` out of the host-tool
+    specs — a 500 whose traceback names filesystem paths, which is exactly
+    what must not happen on a board bound to anything but loopback.
+    """
+    return {"ticker": ticker, "trade_date": trade_date} in runview.runs(results_dir)
+
+
+def known_session(results_dir: Path, ticker: str, trade_date: str, sid: str) -> bool:
+    """Whether that run's own session log names this session.
+
+    The same membership rule one level down, so a reader can open a transcript
+    only for a session the run recorded opening.
+    """
+    return sid in runview.session_ids(results_dir, ticker, trade_date)
+
+
 def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path] = None,
                workspaces_dir: Optional[Path] = None, name: str = "",
                results_dir: Optional[Path] = None,
@@ -79,16 +110,23 @@ def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path]
                                            "workspace": str(workspace)}})
 
         async def api_run(request):
-            data = runview.survey(results_dir, request.path_params["ticker"],
-                                  request.path_params["date"],
+            ticker, date = request.path_params["ticker"], request.path_params["date"]
+            if not known_run(results_dir, ticker, date):
+                return JSONResponse({"error": "no such run in this results tree"}, 404)
+            data = runview.survey(results_dir, ticker, date,
                                   workspace=workspace, config_root=config_root)
             return JSONResponse(data)
 
         async def api_session(request):
-            events = runview.eventlog.read(runview.eventlog.path_for(
-                results_dir, request.path_params["ticker"], request.path_params["date"]))
-            return JSONResponse(runview.session(workspace,
-                                                request.path_params["sid"], events))
+            ticker, date = request.path_params["ticker"], request.path_params["date"]
+            sid = request.path_params["sid"]
+            if not known_run(results_dir, ticker, date):
+                return JSONResponse({"error": "no such run in this results tree"}, 404)
+            if not known_session(results_dir, ticker, date, sid):
+                return JSONResponse({"error": "that run's log names no such session"}, 404)
+            events = runview.eventlog.read(
+                runview.eventlog.path_for(results_dir, ticker, date))
+            return JSONResponse(runview.session(workspace, sid, events))
 
         async def run_index(request):
             return FileResponse(STATIC / "run.html")
