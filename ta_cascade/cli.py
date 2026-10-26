@@ -24,7 +24,6 @@ from .backtest import date_grid, write_tasks
 from .board import NullBoard
 from .config import DEFAULT_ANALYSTS, ANALYST_KEYS, RunConfig
 from .contract import EX_TEMPFAIL, UnknownContract, from_environment
-from .pipeline import StageFailed, run
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -233,6 +232,15 @@ def main(argv=None) -> int:
         return _run_board(args)
     if args.command == "backtest-tasks":
         return _backtest_tasks(args)
+    # The pipeline is the only thing here that imports the SDK, and none of the
+    # three subcommands above needs it: the boards read from disk and
+    # `backtest-tasks` writes manifests.  At module scope it made `run-board`
+    # refuse to start without jaato-sdk, which a board-only deployment has no
+    # way to supply -- the SDK is an rc on TestPyPI or an artefact of a private
+    # GitHub Release, never plain PyPI -- and no reason to carry, along with the
+    # pandas/numpy/matplotlib the boards never import.  Local, like `uvicorn`.
+    from .pipeline import StageFailed, run
+
     try:
         contract = from_environment()
     except UnknownContract as exc:
