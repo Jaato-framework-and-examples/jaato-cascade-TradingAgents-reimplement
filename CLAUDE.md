@@ -109,12 +109,12 @@ a build this is the install path:
 ```bash
 cd ../jaato && gh release list | head        # what exists; `gh release view <tag>`
 D=$(mktemp -d)                               # its OWN empty directory
-gh release download jaato-sdk-0.30.0rc30 --repo Jaato-framework-and-examples/jaato --dir "$D"
+gh release download jaato-sdk-0.30.0rc31 --repo Jaato-framework-and-examples/jaato --dir "$D"
 (cd "$D" && sha256sum -c SHA256SUMS)         # the Release ships the sums; CHECK them
 # --no-index: there is nothing to resolve from an index, and the SDK's own
 # dependencies (python-dotenv, pydantic>=2,<3) are already satisfied here, so
 # nothing is downloaded. The constraint keeps the other 50 lines nailed down.
-PIP_CONSTRAINT=pins.txt .venv/bin/pip install --no-index --find-links "$D" "jaato-sdk==0.30.0rc30"
+PIP_CONSTRAINT=pins.txt .venv/bin/pip install --no-index --find-links "$D" "jaato-sdk==0.30.0rc31"
 ```
 
 **`jaato-doctor`'s `package releases` check is now a ONE-DIRECTIONAL signal.**
@@ -147,7 +147,13 @@ newer build staged on TestPyPI. The source of truth for what exists is
   the `jaato_server checkout` skew check degrades to a WARN for the same
   reason. The tally to expect is **1 fail, 8 warn, 24 checks**, first on
   2026-10-17 (3.14, SDK 0.30.0rc22) and re-measured 2026-10-23 on SDK
-  0.30.0rc30 + jaato-eval 0.3.5rc5. On 2026-10-17 it went to 9 warn when
+  0.30.0rc30 + jaato-eval 0.3.5rc5. On **2026-10-26** the SDK moved to rc31
+  and the COUNT grew to **1 fail, 8 warn, 25 checks** — rc31 carries a check
+  rc30 did not, which is why the instruction below is to compare the LINES and
+  not the number. Expect a transient NINTH warn immediately after any SDK
+  move: `integration (claude-code)  installed from <old>, framework is <new>`,
+  because the skill ships as package data of the SDK; `jaato-scaffold
+  integration claude-code --force` clears it. On 2026-10-17 it went to 9 warn when
   `package releases` reported an rc this venv could not install, and back to
   8 — PASS, "nothing newer is published" — once the venv moved to 3.14 and
   took rc22. Read that check with the caveat in §2 above: on a private
@@ -216,8 +222,21 @@ newer build staged on TestPyPI. The source of truth for what exists is
   (jaato#1809, #1814) — the two facts a session's confinement was previously
   only readable for in the daemon's own log.
   Both rc30 and jaato-eval rc5 were built from `92d7a419`, the commit this
-  host's daemon checkout is on, so client and daemon are the same revision —
-  by timing, not by any mechanism that keeps them so.
+  host's daemon checkout was on, so client and daemon were the same revision —
+  by timing, not by any mechanism that keeps them so. **That caveat came true
+  in three days.** On 2026-10-26 the daemon's checkout was fast-forwarded to
+  `fe68bf21` (jaato-server 1.3.0rc33), which moved the DAEMON to protocol
+  **1.49** while this venv sat on rc30 at **1.46** — and both test tiers passed
+  against that skew, because the mismatch is silent by construction and
+  `jaato_sdk checkout` is a declared blind spot that cannot see it (below).
+  The same day the client moved rc30 -> **rc31** to restore parity: rc31 is
+  built from `67fb7d82`, declares **1.49**, and is 16 commits from the server's
+  build commit where rc30 was 92. Measured after the move: a freeze diff of
+  exactly one line out of 53, `pip check` clean, client and daemon both 1.49,
+  unit 188 passed and end-to-end 3 passed in 96.28 s, 132 `confined=True` with
+  no `confined=False`. **Pin a deployment by PROTOCOL, not by revision
+  proximity**, and re-check the pair after ANY pull of the daemon's checkout:
+  moving the daemon moves the protocol, and nothing warns you.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
   never the fix. See `docs/gaps.md`, 2026-10-17 and 2026-10-23.

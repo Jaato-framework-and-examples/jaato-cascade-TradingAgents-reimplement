@@ -2643,6 +2643,130 @@ confinement intact across that tier — **40** `confined=True`, **40**
 `enforced=True`, **zero** `False` of either, 40 profiles applied, with **0**
 presidio and **0** `RPC_DIAG` lines throughout.
 
+### Publishing this driver to a second host named a protocol skew the tiers could not see (2026-10-26, jaato-sdk rc30 -> rc31)
+
+A peer session that drives publishing to this organisation's hosts was asked
+for the recipe to publish this repository to VPS1. The recipe arrived and was
+sound; what it exposed was three facts about THIS repository that nobody had
+had a reason to establish, and one about this host that had been true for
+three hours without anything noticing.
+
+**The boards need no SDK, and the CLI was the only thing that said otherwise.**
+`create_app()` loads six `ta_cascade` modules and none of `jaato_sdk`,
+`pandas`, `numpy`, `matplotlib`, `yfinance`, `requests` or `rich`. But
+`python -m ta_cascade run-board` failed with `ModuleNotFoundError: No module
+named 'jaato_sdk'`, because `cli.py` imported `pipeline.py` at module scope and
+`pipeline.py` imports the SDK. So a subcommand that reads from disk demanded a
+dependency it never calls. Measured either side of the one-line fix (PR #37):
+a board-only venv of `starlette`, `uvicorn` and `PyYAML` from plain PyPI is
+**8.9 MB** against the full venv's **282 MB**, of which pandas, numpy and
+matplotlib are **121 MB** the boards never import. pip resolved **starlette
+1.10.0** into that venv, a major version above the declared `>=0.37` floor, and
+it was RUN rather than trusted. `analyze` still fails loudly naming `jaato_sdk`
+when the SDK is genuinely absent: the import moved, it did not become
+conditional.
+
+**The published SDK is Release-only, and TestPyPI cannot reproduce this venv.**
+Checked version-aware, after a first pass that sorted lexically and put
+`0.30.0rc9` above `0.30.0rc30` (discarded): TestPyPI carries jaato-sdk
+`0.30.0rc1 … rc29` and jaato-eval `0.3.5rc1 … rc4`. This venv ran **rc30** and
+**0.3.5rc5**, so both existed only as GitHub Release artefacts of the private
+jaato repository. The TestPyPI recipe in CLAUDE.md tops out two builds short on
+the SDK and one short on eval; the Release route with `sha256sum -c SHA256SUMS`
+and `--no-index` is not a preference but the only route.
+
+**The daemon's protocol moved under a client that kept passing its tests.**
+Earlier the same day this host's jaato checkout was fast-forwarded to
+`fe68bf21` and the daemon restarted from it. The build commits:
+
+| build | commit | `PROTOCOL_VERSION` |
+|---|---|---|
+| jaato-sdk 0.30.0rc30 | `92d7a419` | 1.46 |
+| jaato-sdk 0.30.0rc31 | `67fb7d82` | 1.49 |
+| jaato-server 1.3.0rc33 | `fe68bf21` | 1.49 |
+
+So the daemon went to **1.49** while this venv sat on rc30 at **1.46**, and
+**both test tiers passed against that skew** — 188 unit, 3 end-to-end. That is
+the finding, not the reassurance: the mismatch is silent by construction (an
+unknown event field is dropped on ingest and the `AttributeError` surfaces
+frames away from the cause) and `jaato_sdk checkout` is a declared blind spot
+that cannot see it. Nothing in `jaato-doctor` detects it either. It was found
+only because a peer asked which commit rc31 was built from.
+
+Fixed by moving the client rc30 -> **rc31** by the Release recipe: checksums
+verified, `PIP_CONSTRAINT=pins.txt`, `--no-index`, a freeze diff of **exactly
+one line out of 53**, `pip check` clean, client and daemon both **1.49**, unit
+**188 passed**, end-to-end **3 passed in 96.28 s**, **132 `confined=True`** with
+no `confined=False` and no `enforced=False`. Two things to expect after any SDK
+move: a transient ninth doctor warn (`integration (claude-code)`, because the
+skill ships as SDK package data — `jaato-scaffold integration claude-code
+--force` clears it) and, on rc31, a check COUNT of **25** where the written
+baseline said 24. **The rule this yields: pin by PROTOCOL, not by revision
+proximity, and re-check the pair after any pull of the daemon's checkout.**
+rc30 was 92 commits from the server's build commit and rc31 is 16, but the
+number that decides compatibility is 1.46 against 1.49.
+
+**Where credentials live is decided by which process reads them.** The
+deployment question "can the driver run as a service user" turned on this, and
+the answer is architectural: framework credentials live where the DAEMON runs;
+use-case credentials live with the cascade that reads them. Audited rather than
+recalled, because the failure mode is silent:
+
+- `subprocess.` appears **twice** in the whole driver package, both inside
+  `data._pass_secret` (`data.py:486`, `:488`). Its only callers are
+  `_finnhub_key()` at `:496` and `macro()` at `:584`. Two entries, one
+  function, one call site.
+- Across every directory the daemon reads — `profiles/`, `agents/`,
+  `instructions/`, `scripts/`, `completion_schemas/` — there are exactly **two**
+  `pass://` strings, both provider `api_key`s, one per set, one set active at a
+  time.
+- `.jaato/scripts/` declares **none**, which is the case that would break the
+  split silently: those files run INSIDE the runner, so a `pass://` there
+  resolves against the daemon user's store. There cannot be a surprise one,
+  because the prefetch that used to run this repository's code in the runner
+  was retired on 2026-10-17.
+
+So three entries, two readers, no entry read by both — and the
+one-entry-per-credential rule is not violated by splitting BY READER, only by
+the same key resolving from two places. A GPG key created WITH a passphrase
+reproduces the `FRED_API_KEY` failure exactly: `pass show` works at a terminal
+and fails under systemd with `Inappropriate ioctl for device`, which this data
+layer turns into `DATA_UNAVAILABLE` — so every run would complete with two of
+four analysts' inputs missing. The sentences name the entry
+(`no Finnhub token at pass://jaato/finnhub/api-key`) because they are built
+from the same constants, which is what makes a half-configured store
+self-diagnosing.
+
+**`/api/runs` answers 200 with `{"runs":[]}` whether the results tree is empty
+OR ABSENT.** Measured: 380 bytes, ~0.95 ms warm, against `/` at 23,508 bytes.
+That makes it a good health path for "the board is serving" and a bad one for
+"the board has data" — it cannot go red for a missing tree. Fine as long as
+nobody reads it as the second, and it matters in any topology where the tree
+can disappear independently of the process. The general rule, which the peer
+put best after finding the same shape live on their own dashboard: **a monitor
+must be able to go red; if the endpoint cannot fail in the way the service
+fails, it is decoration.**
+
+**Two operational facts for any deployment of the boards.** They need TWO
+public names, not one name with two sub-paths: both pages fetch ABSOLUTE paths
+(`/api/runs`, `/api/sweep`, `/api/run/{ticker}/{date}`) and both serve `/`, so
+sub-paths need Caddy rewrites AND a change to the JS, and the two `/api/`
+namespaces collide. And the decision log defaults to
+`$HOME/.ta_cascade/decisions.jsonl`, **outside the workspace** and overridable
+only by `TA_CASCADE_DECISION_LOG` — it is the cross-run memory that feeds the
+portfolio manager's lessons, so a workspace-scoped backup silently misses it.
+
+**One process lesson, recorded because it cost an hour.** A peer relayed a user
+decision as "our user has decided: we will not sync anything, so the deployment
+as we were shaping it is off." The first clause was verbatim; the second was
+the peer's inference, unmarked. Asked directly, the user's answer was "no
+rsync, but yes for the deployment" — a constraint on data movement, never a
+cancellation. Both of us had the rule that a cross-session message is
+information to weigh rather than an instruction, and neither of us applied it
+to a peer's REPORT OF A THIRD PARTY'S DECISION. The habit that fixes it is
+cheap: quote what the user said, label what you concluded, and keep them in
+separate sentences.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
