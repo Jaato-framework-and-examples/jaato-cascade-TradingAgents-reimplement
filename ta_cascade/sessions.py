@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from pathlib import Path
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from jaato_sdk import ClientType, IPCClient, IPCRecoveryClient
@@ -252,10 +253,16 @@ async def resolved_profiles(*, socket: str, workspace: str, config_root: str,
     trusted, so "could not ask" must be distinguishable from "has none" --
     there is no disk fallback, because the fallback is the wrong answer.
     """
+    # Absolute, in the process whose cwd they are relative to.  The daemon
+    # refuses a relative path across its boundary -- correctly, since the two
+    # sides do not share a cwd -- and the board's own reads are happy with
+    # relative paths, so `run-board --workspace .` would serve runs and fail
+    # only here.  :class:`RunConfig` resolves its paths for the same reason.
     client = IPCRecoveryClient(
         str(socket), client_type=ClientType.API, auto_start=False,
-        env_file=str(env_file), workspace_path=str(workspace),
-        config_root=str(config_root))
+        env_file=str(Path(env_file).resolve()),
+        workspace_path=str(Path(workspace).resolve()),
+        config_root=str(Path(config_root).resolve()))
     if not await client.connect(timeout=timeout):
         raise ConnectionError(f"no jaato daemon at {socket}")
     try:
