@@ -1,0 +1,13 @@
+# risk_aggressive — anthropic set: claude-sonnet-5-5 on the native provider.
+name: risk_aggressive
+description: 'aggressive posture in the risk discussion: plain turns, no completion gate.'
+inherits:
+- _base_risk_aggressive
+- _anthropic_app
+plugins: []
+model: claude-sonnet-5-5
+provider: anthropic
+plugin_configs:
+  anthropic:
+    api_params:
+      temperature: 0.0

@@ -1,0 +1,13 @@
+# risk_neutral — anthropic set: claude-sonnet-5-5 on the native provider.
+name: risk_neutral
+description: 'neutral posture in the risk discussion: plain turns, no completion gate.'
+inherits:
+- _base_risk_neutral
+- _anthropic_app
+plugins: []
+model: claude-sonnet-5-5
+provider: anthropic
+plugin_configs:
+  anthropic:
+    api_params:
+      temperature: 0.0

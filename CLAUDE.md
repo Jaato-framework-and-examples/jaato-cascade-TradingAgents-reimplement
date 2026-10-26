@@ -434,6 +434,14 @@ backtests/<name>/          generated matrices: fixture/ (empty) + tasks/<TICKER>
 
 .jaato/                    the workspace the daemon reads; DATA, not code
   profiles/_base_<agent>.yaml         13 provider-agnostic stage profiles (ceilings, schemas, gates)
+  profiles/anthropic_sonnet/*.yaml    provider+model binding (claude-sonnet-5-5 on the NATIVE
+                                      anthropic provider, credential pass://jaato/anthropic/api-key).
+                                      The set to run while the MiniMax key is invalid. Its knobs
+                                      differ from OpenRouter's: thinking is `enable_thinking` +
+                                      `thinking_budget` (tokens) and there is NO `thinking_level`
+                                      or `app_title`, so the two judges carry enable_thinking only.
+                                      Measured 2026-10-26: all 13 stages resolve and the model
+                                      answers (`READY.`) on a real call.
   profiles/openrouter_sonnet/*.yaml   provider+model binding (anthropic/claude-sonnet-4.5 via OpenRouter)
   profiles/minimax_m3/*.yaml          provider+model binding (MiniMax-M3 on the native minimax
                                       provider). Same 13 stages, same _base_<agent> parents:

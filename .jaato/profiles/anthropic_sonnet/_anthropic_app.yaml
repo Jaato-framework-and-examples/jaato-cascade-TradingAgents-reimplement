@@ -1,0 +1,31 @@
+# Shared Anthropic identity for every stage of this set.
+#
+# Holds ONLY the key no child overrides: the credential.  `api_params` stays
+# in each stage profile for the reason the OpenRouter set documents --
+# plugin_configs merges one level deep (per key under the plugin name) and a
+# nested dict is REPLACED, so an `api_params` here would be silently dropped
+# by the two stages that set their own, taking `temperature: 0.0` with it.
+name: _anthropic_app
+description: Anthropic credential shared by every stage.
+plugins: []
+plugin_configs:
+  anthropic:
+    # Resolved daemon-side from the pass store, never an env var read from the
+    # workspace .env: the key then lives in no file beside the workspace, and
+    # a jaato-eval arm materialises a fresh workspace whose .env carries only
+    # JAATO_PROFILE_SET, where an env-var credential would be absent.
+    # `jaato-doctor --secret pass://jaato/anthropic/api-key` proves it resolves.
+    #
+    # It is FIRST in this provider's resolution order (api_key_param), so it
+    # wins over ANTHROPIC_API_KEY and the OAuth file regardless of what the
+    # daemon's environment happens to carry -- which is what keeps a run on
+    # this set from quietly billing somebody else's credential.
+    api_key: "pass://jaato/anthropic/api-key"
+
+    # Prompt caching is OFF, which is this provider's default.  Left explicit
+    # because it is a cost knob a reader will come looking for: the stages are
+    # separate sessions with different personas, so there is little to reuse
+    # ACROSS them, and the win would be within one analyst's tool loop.
+    # Turning it on costs a write premium, so it is a measurement somebody
+    # should make rather than a default to inherit.
+    enable_caching: false

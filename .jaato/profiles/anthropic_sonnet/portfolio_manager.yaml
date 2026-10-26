@@ -1,0 +1,18 @@
+# portfolio_manager — anthropic set: claude-sonnet-5-5 on the native provider.
+name: portfolio_manager
+description: final decision after the risk discussion.
+inherits:
+- _base_portfolio_manager
+- _anthropic_app
+plugins: []
+model: claude-sonnet-5-5
+provider: anthropic
+plugin_configs:
+  anthropic:
+    api_params:
+      temperature: 0.0
+      # The OpenRouter set says `thinking_level: high`; this provider takes no
+      # such key -- its knobs are `enable_thinking` and `thinking_budget`
+      # (tokens).  The budget is left unset so the framework's default applies
+      # rather than a number invented here.
+      enable_thinking: true

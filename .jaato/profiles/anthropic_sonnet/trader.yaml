@@ -1,0 +1,13 @@
+# trader — anthropic set: claude-sonnet-5-5 on the native provider.
+name: trader
+description: turns the research plan into a trade proposal.
+inherits:
+- _base_trader
+- _anthropic_app
+plugins: []
+model: claude-sonnet-5-5
+provider: anthropic
+plugin_configs:
+  anthropic:
+    api_params:
+      temperature: 0.0
