@@ -21,6 +21,7 @@ import logging
 from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from jaato_sdk import ClientType, IPCClient, IPCRecoveryClient
+from jaato_sdk.events import SessionProfilesEvent
 
 from . import eventlog, sessionlog, tools
 from .config import RunConfig
@@ -227,3 +228,47 @@ async def observing(cfg: RunConfig, cascade_id: str,
                     "observer_detached", why=f"{type(exc).__name__}: {exc}"[:300]))
         with contextlib.suppress(Exception):
             await client.disconnect()
+
+
+async def resolved_profiles(*, socket: str, workspace: str, config_root: str,
+                            env_file: str, timeout: float = 30.0) -> Dict[str, Dict[str, Any]]:
+    """Every profile of this workspace's set, AS THE DAEMON RESOLVES IT.
+
+    ``session.profiles`` is answered by the component that OWNS the inheritance
+    rules, so each entry is what a session of that profile would actually start
+    with: ``inherits`` merged, the set's binding applied, and
+    ``suppress_inherited_processors`` already honoured.
+
+    That last one is why this asks the daemon rather than reading
+    ``_base_<stage>.yaml``.  Parsing the base files here would be a second
+    implementation of rules the framework owns -- plugins union, processors
+    concatenate, limits are min-wins -- and it would be WRONG wherever a set
+    changes a capability: under the ``echo`` set the trader declines the
+    ``rules_read`` gate, and the base file still declares it.  Measured
+    2026-10-26: the daemon returns one gate for that profile, the base file
+    says two.
+
+    Raises rather than answering partially.  A configuration view exists to be
+    trusted, so "could not ask" must be distinguishable from "has none" --
+    there is no disk fallback, because the fallback is the wrong answer.
+    """
+    client = IPCRecoveryClient(
+        str(socket), client_type=ClientType.API, auto_start=False,
+        env_file=str(env_file), workspace_path=str(workspace),
+        config_root=str(config_root))
+    if not await client.connect(timeout=timeout):
+        raise ConnectionError(f"no jaato daemon at {socket}")
+    try:
+        async with asyncio.timeout(timeout):
+            await client.list_profiles()
+            async for ev in client.events():
+                if isinstance(ev, SessionProfilesEvent):
+                    break
+            else:  # pragma: no cover - the stream ended without an answer
+                raise ConnectionError("the daemon's event stream ended before it listed profiles")
+    finally:
+        await client.disconnect()
+    if ev.parse_errors:
+        log.warning("daemon reported %d profile parse error(s): %s", len(ev.parse_errors),
+                    "; ".join(f"{e.name}: {e.error}" for e in ev.parse_errors))
+    return {p.name: p.model_dump(mode="json") for p in ev.profiles}

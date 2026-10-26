@@ -33,7 +33,7 @@ from starlette.applications import Starlette
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
-from .. import runview, sweep
+from .. import plan, runview, sweep
 
 STATIC = Path(__file__).parent / "static"
 
@@ -73,7 +73,9 @@ def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path]
                workspaces_dir: Optional[Path] = None, name: str = "",
                results_dir: Optional[Path] = None,
                workspace: Optional[Path] = None,
-               config_root: Optional[Path] = None) -> Starlette:
+               config_root: Optional[Path] = None,
+               socket: Optional[str] = None,
+               env_file: Optional[Path] = None) -> Starlette:
     """An app over whichever of the two views its paths support.
 
     The sweep view needs ``tasks_dir`` (the denominator) and ``results_path``
@@ -131,7 +133,34 @@ def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path]
         async def run_index(request):
             return FileResponse(STATIC / "run.html")
 
+        _config_root = Path(config_root) if config_root else Path(workspace) / ".jaato"
+        _env_file = Path(env_file) if env_file else Path(workspace) / ".env"
+
+        async def api_plan(request):
+            # The ONE route that asks the daemon.  Everything else here reads
+            # disk, so a run still renders when the daemon is down and only
+            # the configuration view degrades -- and it degrades by SAYING SO.
+            # The SDK import is local because the boards do not otherwise need
+            # it: a board-only deployment installs starlette, uvicorn and
+            # PyYAML and nothing else, and must keep serving runs without it.
+            try:
+                from .. import sessions
+            except ImportError as exc:
+                return JSONResponse(
+                    {"error": f"no jaato SDK in this environment, so the configured "
+                              f"pipeline cannot be resolved: {exc}"}, 503)
+            try:
+                profiles = await sessions.resolved_profiles(
+                    socket=socket or "/tmp/jaato.sock", workspace=str(workspace),
+                    config_root=str(_config_root), env_file=str(_env_file))
+            except Exception as exc:                      # the daemon's answer, or its absence
+                return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, 503)
+            data = plan.assemble(profiles, profile_set=plan.profile_set_of(_env_file))
+            data["paths"] = {"workspace": str(workspace), "config_root": str(_config_root)}
+            return JSONResponse(data)
+
         routes += [
+            Route("/api/plan", api_plan),
             Route("/run", run_index),
             Route("/api/runs", api_runs),
             Route("/api/run/{ticker}/{date}", api_run),

@@ -70,6 +70,9 @@
   aside{flex:1 1 400px;min-width:300px;position:sticky;top:18px;background:var(--panel);
         border:1px solid var(--rule);border-radius:6px;display:flex;flex-direction:column;
         max-height:calc(100vh - 36px)}
+  /* `aside{display:flex}` above beats the UA stylesheet's `[hidden]{display:none}`,
+     so without this the drawer renders empty on every load. */
+  [hidden]{display:none!important}
   aside header{padding:.6rem .7rem;border-bottom:1px solid var(--rule)}
   .tabs{display:flex;gap:3px;flex-wrap:wrap;margin-top:.45rem}
   .tb{border:1px solid var(--rule);background:var(--panel);color:var(--soft);border-radius:5px;
@@ -152,7 +155,10 @@ const LABEL = {
 // profile need the daemon's saved record, which a stage in flight may not have.
 function tabsFor(s) {
   const c = s.capabilities || {};
-  const out = ["transcript"];
+  // A stage with no session has no transcript to open: offering the tab would
+  // promise a fetch that can only 404.  Its capability tabs still apply --
+  // they describe the configuration, which exists before any session does.
+  const out = s.session_id ? ["transcript"] : [];
   if (s.has_record) out.push("persona", "profile");
   if (c.schema) out.push("schema");
   if ((c.gates || []).length) out.push("gate");
@@ -391,11 +397,63 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && sel) { sel = null; shown = null; $("#drawer").hidden = true; }
 });
 
+// The CONFIGURED pipeline, asked of the daemon once: what this workspace is
+// set up to do, which has an answer before anything has run.  Kept separate
+// from the run so that a daemon that cannot be reached costs the plan and
+// nothing else -- a run is read from disk and still renders without it.
+let planned = null, planErr = null;
+
+async function loadPlan() {
+  try {
+    const d = await (await fetch("/api/plan", {cache: "no-store"})).json();
+    if (d.error) { planned = null; planErr = d.error; } else { planned = d; planErr = null; }
+  } catch (e) { planned = null; planErr = String(e); }
+}
+
+// Bands derived from the stages themselves, so a stage the plan does not know
+// still lands in a band rather than vanishing -- survey's own rule.
+function bandsOf(stages) {
+  const order = [], by = new Map();
+  for (const s of stages) {
+    const n = s.band || s.stage;
+    if (!by.has(n)) { by.set(n, []); order.push(n); }
+    by.get(n).push(s);
+  }
+  return order.map(n => ({name: n, stages: by.get(n)}));
+}
+
+// What the run did, painted onto what the configuration declares: a stage the
+// run has reached replaces its planned card, one it has not stays planned, and
+// one the plan never declared is appended rather than dropped.
+function withPlan(d) {
+  if (!planned) return d;
+  const by = new Map((d.stages || []).map(s => [s.stage, s]));
+  const stages = planned.stages.map(p => by.get(p.stage) || p);
+  const known = new Set(planned.stages.map(p => p.stage));
+  for (const s of (d.stages || [])) if (!known.has(s.stage)) stages.push(s);
+  return Object.assign({}, d, {stages, bands: bandsOf(stages)});
+}
+
 async function tick() {
   try {
+    if (planned === null && planErr === null) await loadPlan();
     if (!where) {
       const list = await (await fetch("/api/runs", {cache: "no-store"})).json();
-      if (!list.runs.length) { $("#sub").textContent = `no runs under ${list.paths.results}`; return; }
+      if (!list.runs.length) {
+        // No run yet is not an empty page: the configuration is still a thing
+        // a reader came here to check, stage by stage.
+        if (planned) {
+          $("#sub").textContent =
+            `no runs under ${list.paths.results} — showing the configured pipeline`
+            + (planned.set ? ` (set: ${planned.set})` : "")
+            + (planned.missing.length ? ` · ${planned.missing.length} stage(s) the daemon does not list: ${planned.missing.join(", ")}` : "");
+          render({stages: planned.stages, bands: bandsOf(planned.stages)});
+        } else {
+          $("#sub").textContent = `no runs under ${list.paths.results} — and the configured `
+            + `pipeline could not be resolved: ${planErr}`;
+        }
+        return;
+      }
       $("#pickrun").innerHTML = list.runs.map(r =>
         `<option value="${esc(r.ticker)}/${esc(r.trade_date)}">${esc(r.ticker)} ${esc(r.trade_date)}</option>`).join("");
       const hash = location.hash.slice(1);
@@ -405,7 +463,7 @@ async function tick() {
       const [t, d] = first.split("/");
       where = {ticker: t, date: d};
     }
-    render(await (await fetch(`/api/run/${where.ticker}/${where.date}`, {cache: "no-store"})).json());
+    render(withPlan(await (await fetch(`/api/run/${where.ticker}/${where.date}`, {cache: "no-store"})).json()));
     if (sel) await loadSession();
   } catch (e) { $("#sub").textContent = "cannot reach the board: " + e; }
 }
