@@ -2521,7 +2521,7 @@ Checks: unit tier **171 passed** (24 of them new, for `runview` and
 `eventlog`), end-to-end **3 passed in 125.64 s** against the shared daemon,
 and the board smoke-tested over the real run and over a kept echo run.
 
-### The shared daemon died with a logout, and the first session of every start pays 15 s (2026-10-26, jaato#1884/#1862/#1863, jaato-premium#105/#106)
+### The shared daemon died with a logout, and the first session of every start pays 15 s (2026-10-26, jaato#1884/#1862/#1863, jaato-premium#105/#106/#110)
 
 **The daemon was absent for 4 h 31 min and nothing reported it.** It did not
 crash: at 08:20:55 it logged `Shutdown requested...`, tore down two idle pool
@@ -2622,8 +2622,10 @@ put this daemon in `app.slice`. **So the host default stays off and a workspace
 opts IN**, which `redaction_env.resolve_session_env` supports by preferring the
 session env over the process env and which is measured working here (the daemon
 logged `Pseudonymization confirmed … wired in the runner`, with the session key
-delivered per #1856 and scrubbed from output per #1215). The cost is filed
-upstream rather than absorbed quietly.
+delivered per #1856 and scrubbed from output per #1215). The cost is filed as
+**jaato-premium#110** rather than absorbed quietly: a host default that is ON
+when unset, but unaffordable as a default on this box, is the framework's
+sizing question and not ours to work around per driver.
 
 **Two of my own measurements were wrong and are corrected here.** A count of
 "3 lines in the stall window" came from a concatenated log rather than a direct
