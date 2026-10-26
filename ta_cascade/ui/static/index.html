@@ -85,7 +85,16 @@ function tile(k, v, n) {
 
 function render(d) {
   $("#name").textContent = d.name || "sweep board";
-  $("#paths").textContent = `${d.paths.results}  ·  workspaces: ${d.paths.workspaces || "(not kept)"}`;
+  // "(not kept)" was a claim this page cannot support: all it knows is whether
+  // it was GIVEN a --workspaces path.  Whether the arm workspaces exist on
+  // disk is a different fact, and reporting the second while knowing only the
+  // first told a reader their arms were gone when they may be sitting there.
+  const ws = d.paths.workspaces;
+  $("#paths").textContent = `${d.paths.results}  ·  workspaces: ${ws || "(not given)"}`;
+  $("#paths").title = ws
+    ? `arms in flight are read from ${ws}`
+    : "this board was not pointed at the arm workspaces (--workspaces DIR); "
+      + "whether they were kept is not something it can see from here";
 
   const c = d.counts || {};
   // Money: null means withheld on purpose, never zero. A subscription provider
