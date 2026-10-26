@@ -85,6 +85,11 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--config-root", type=Path, default=None,
                    help="the .jaato/ tree whose profiles answer for a stage with no session "
                         "record yet (default: <workspace>/.jaato)")
+    r.add_argument("--socket", default="/tmp/jaato.sock",
+                   help="the daemon that resolves the CONFIGURED pipeline for the plan view "
+                        "(the only thing this board asks a daemon; runs are read from disk)")
+    r.add_argument("--env-file", type=Path, default=None,
+                   help="the workspace .env naming JAATO_PROFILE_SET (default: <workspace>/.env)")
     r.add_argument("--host", default="127.0.0.1")
     r.add_argument("--port", type=int, default=8098)
 
@@ -217,7 +222,8 @@ def _run_board(args) -> int:
     from .ui.api import create_app
 
     app = create_app(results_dir=args.results, workspace=args.workspace,
-                     config_root=args.config_root)
+                     config_root=args.config_root, socket=args.socket,
+                     env_file=args.env_file)
     _announce(f"run board over {args.results}", args.host, args.port,
               "every stage's transcript, prompt and persona")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
