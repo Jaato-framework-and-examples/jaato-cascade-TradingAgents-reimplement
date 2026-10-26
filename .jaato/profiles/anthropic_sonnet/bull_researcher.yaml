@@ -1,0 +1,13 @@
+# bull_researcher — anthropic set: claude-sonnet-5-5 on the native provider.
+name: bull_researcher
+description: 'bull side of the investment debate: plain turns, no completion gate.'
+inherits:
+- _base_bull_researcher
+- _anthropic_app
+plugins: []
+model: claude-sonnet-5-5
+provider: anthropic
+plugin_configs:
+  anthropic:
+    api_params:
+      temperature: 0.0

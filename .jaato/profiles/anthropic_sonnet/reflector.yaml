@@ -1,0 +1,13 @@
+# reflector — anthropic set: claude-sonnet-5-5 on the native provider.
+name: reflector
+description: scores a past decision against its realised outcome.
+inherits:
+- _base_reflector
+- _anthropic_app
+plugins: []
+model: claude-sonnet-5-5
+provider: anthropic
+plugin_configs:
+  anthropic:
+    api_params:
+      temperature: 0.0
