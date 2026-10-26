@@ -2521,6 +2521,126 @@ Checks: unit tier **171 passed** (24 of them new, for `runview` and
 `eventlog`), end-to-end **3 passed in 125.64 s** against the shared daemon,
 and the board smoke-tested over the real run and over a kept echo run.
 
+### The shared daemon died with a logout, and the first session of every start pays 15 s (2026-10-26, jaato#1884/#1862/#1863, jaato-premium#105/#106)
+
+**The daemon was absent for 4 h 31 min and nothing reported it.** It did not
+crash: at 08:20:55 it logged `Shutdown requested...`, tore down two idle pool
+slots and its template, and exited clean. One second earlier the **user systemd
+manager had activated `exit.target`** — a logout took gpg-agent, dbus, the
+keyring, code-tunnel and all eleven tmux pane scopes with it. The host never
+rebooted (`up 26 days`). A new manager came up at 08:43:56 and tmux at 08:47:18,
+and the daemon did not, because it was a **transient** `systemd-run --user`
+unit: no file on disk, so nothing for the new manager to restart, and
+`systemctl --user status` answered *"Unit could not be found."*
+
+**The fix is a persistent unit, which is also the general lesson.** `Linger=yes`
+was already set; linger keeps a manager alive after logout but does not
+resurrect a unit that has no definition. `~/.config/systemd/user/jaato-server.service`
+now carries the same shape the transient unit was given — `Type=forking` with
+`PIDFile=/tmp/jaato.pid` (because `--restart` always daemonizes and systemd
+would otherwise reap the forked child), `MemoryMax=infinity` stated rather than
+inherited, `Restart=on-failure` with the `StartLimitBurst=8` budget
+`jaato-tg.service` uses for the same reason — and is `enabled` against
+`default.target`. Had it existed this morning the gap would have been the 23
+minutes between the managers, not four and a half hours. **A transient unit is
+the wrong home for anything another workspace depends on**: it is scoped to the
+session that created it, and it dies silently with that session.
+
+**The checkout had drifted again, and a fast-forward was free.** The daemon's
+framework is an editable install from the shared `jaato` checkout, so whatever
+branch that checkout sits on is what new runners import. It was on
+`claude/rpc-client-refuses-pid-zero`, **12 commits behind `origin/main` and 0
+ahead**, fully merged — so the checkout moved to `main` (`fe68bf21`) by
+`merge --ff-only`, leaving the topic branch's own pointer untouched at
+`e4a32dc8`. All eight entry-point groups were then compared against the
+installed `.dist-info` and matched, so no reinstall: an editable install
+redirects imports, not metadata, and only an entry-point change needs one.
+
+**Three sessions of the prior restart's findings came back fixed.**
+jaato-premium **#105** (a session with redaction off still imported the engine)
+was fixed by **#106** within the hour, and verified here by absence rather than
+by timing: **0** presidio/spaCy lines in the runner log, **0** anywhere in the
+daemon log, decision window 8,021 ms → **66 ms**, `bootstrap_acked` 8,109 ms →
+**885 ms**. jaato **#1863** (the per-RPC `[RPC_DIAG]` trace at INFO, 34% of the
+log) was fixed and merged at 06:50 the next morning, and `main` now carries
+`test_rpc_diag_is_debug_1863.py`; **0** `RPC_DIAG` lines since. jaato **#1862**
+(the init-failure answer naming a `ConfigurationError` never emitted) is open.
+
+**The first `session.new` after any daemon start costs 15–17 s, and it is 522
+redundant profile discoveries — filed as jaato#1884.** Reproduced 3/3 cold
+starts with the `#1452` phase marks; the create itself is healthy and the time
+lands entirely in one step:
+
+| cold start | `session_created` | `answer_queued` | that step |
+|---|---|---|---|
+| 12:55:59 | t=+3,751 ms | t=+19,792 ms | **16,041 ms** |
+| 13:03:31 | t=+3,514 ms | t=+20,901 ms | **17,387 ms** (daemon at `--verbose`) |
+| 13:06:29 | t=+3,449 ms | t=+18,715 ms | **15,265 ms** |
+
+Only the first session pays it: a *fresh* workspace, so a fresh AppArmor
+compile, against the warm daemon opens in **2.46 s**. In the third window the
+daemon logged 1,139 lines of which **1,136 are `subagent.config`** — **522**
+complete passes over `~/.jaato/profiles` (6 profiles) and **522** over the
+premium set (15), ≈11,000 profile-file parses at ~24 ms a pass for a result that
+cannot change between the first and the 522nd. `discover_profiles` has no
+memoisation. Ruled out on evidence, each: AppArmor (parser 283 ms, total
+287 ms), bootstrap (`bootstrap_acked` 1.3 s), the pool fork (replenished 2.6 s
+*before* the window), provider network (`models_data = []`, lazy by its own
+comment), the premium redaction path (0 presidio objects in daemon, template and
+every slot; the hook logged `disabled … nothing to verify` 64 ms before the
+window opened), and both `set_config_root` and `expose_tool` (their registry
+traces do appear in this log at DEBUG, and there were **zero** in the window).
+Every one of the 522 passes scanned user + premium tiers only and never the
+workspace tier, which is the signature of the no-`config_root` call at
+`subagent/plugin.py:455`. **Which caller runs it 522 times is still unknown**:
+two mechanisms were proposed and the log killed both, and naming it needs a
+stack sample or `JAATO_TRACE_LOG`, neither worth more restarts of a shared
+daemon. jaato#1564 is the same defect class at 2× runner-side, and closed.
+
+**Redaction works now, and the reason to leave it off is memory, not
+breakage.** With #104 handing the runner its session key and #106 making a
+disabled session free, the host-wide `JAATO_REDACTION_ENABLED=false` stopped
+being a workaround and became a default worth justifying. It is justified by
+measurement, on one workspace that opted in through its own `.env`:
+
+| | `Rss` | `Pss` | `Private` | `Shared` |
+|---|---|---|---|---|
+| redaction off | 208 MiB | **78 MiB** | 35 MiB | 173 MiB |
+| redaction on | 1,524 MiB | **1,410 MiB** | 1,382 MiB | 142 MiB |
+
+**+1.30 GiB PSS per redacted session, 98% of it private.** RSS is the wrong
+metric for pooled runners — a plain slot reads 208 MiB but costs 78 MiB
+proportionally, because 173 MiB are copy-on-write pages shared with the fork
+template — but it does not rescue this number: the engine is imported *after*
+the fork, so none of it is shared with the template or with sibling runners.
+`runner/template_preload.py` is explicit that preloading shares Presidio and
+spaCy's **code** while *"a factory that memoises its model still loads it once
+per slot"*, so there is no switch that collapses it; premium declares no
+`PLUGIN_PRELOAD` at all. A cascade run holds ~5 runner slots (#1622), so one
+redacted run is ~6.9 GiB on an 11.9 GiB box — the shape of the OOM kills that
+put this daemon in `app.slice`. **So the host default stays off and a workspace
+opts IN**, which `redaction_env.resolve_session_env` supports by preferring the
+session env over the process env and which is measured working here (the daemon
+logged `Pseudonymization confirmed … wired in the runner`, with the session key
+delivered per #1856 and scrubbed from output per #1215). The cost is filed
+upstream rather than absorbed quietly.
+
+**Two of my own measurements were wrong and are corrected here.** A count of
+"3 lines in the stall window" came from a concatenated log rather than a direct
+read and was simply false — the discovery lines are `logger.info` and were
+present all along, which also means `--verbose` was not an observer effect. And
+summing RSS across two forked sibling runners to "3,046 MiB" is invalid
+methodology whatever it yields, since RSS double-counts shared pages; it landed
+near the truth only because these particular pages happen to be private.
+
+Checks. After the 22:53 restart of 2026-10-25: connect **1.0 s**, end-to-end
+tier **3 passed in 105.28 s** (120.89 s on 2026-10-23), unit tier **188 passed
+in 5.86 s**. After today's: connect **1.0 s** then **0.00 s** warm, unit tier
+**188 passed in 6.28 s**, end-to-end tier **3 passed in 95.70 s**, and
+confinement intact across that tier — **40** `confined=True`, **40**
+`enforced=True`, **zero** `False` of either, 40 profiles applied, with **0**
+presidio and **0** `RPC_DIAG` lines throughout.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
