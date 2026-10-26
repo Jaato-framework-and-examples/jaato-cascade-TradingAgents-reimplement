@@ -80,7 +80,12 @@ def workspace():
     ws = _short_tmp()
     shutil.copytree(REPO / ".jaato", ws / ".jaato",
                     ignore=shutil.ignore_patterns("logs", "journal", "*.jsonl"))
-    (ws / ".env").write_text("JAATO_PROFILE_SET=echo\n")
+    (ws / ".env").write_text(
+        # The runner reads the SESSION env, not the daemon's process env, and
+        # jaato-premium treats an unset switch as ON -- so a temp workspace that
+        # omits this is refused for want of redaction it cannot wire, and the
+        # failure arrives as `session runner not ready` 30 s later.
+        "JAATO_PROFILE_SET=echo\nJAATO_REDACTION_ENABLED=false\n")
     try:
         yield ws, sock
     finally:
@@ -172,7 +177,12 @@ def test_budget_stop_fails_the_stage_by_name_and_resume_finishes(cfg):
     ws = cfg.workspace / "budget"
     shutil.copytree(REPO / ".jaato", ws / ".jaato",
                     ignore=shutil.ignore_patterns("logs", "journal", "*.jsonl"))
-    (ws / ".env").write_text("JAATO_PROFILE_SET=echo\n")
+    (ws / ".env").write_text(
+        # The runner reads the SESSION env, not the daemon's process env, and
+        # jaato-premium treats an unset switch as ON -- so a temp workspace that
+        # omits this is refused for want of redaction it cannot wire, and the
+        # failure arrives as `session runner not ready` 30 s later.
+        "JAATO_PROFILE_SET=echo\nJAATO_REDACTION_ENABLED=false\n")
 
     def cap(agent: str, on: bool) -> None:
         path = ws / ".jaato" / "profiles" / f"_base_{agent}.yaml"
