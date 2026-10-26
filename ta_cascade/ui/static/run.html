@@ -443,10 +443,19 @@ async function tick() {
         // No run yet is not an empty page: the configuration is still a thing
         // a reader came here to check, stage by stage.
         if (planned) {
-          $("#sub").textContent =
-            `no runs under ${list.paths.results} — showing the configured pipeline`
-            + (planned.set ? ` (set: ${planned.set})` : "")
-            + (planned.missing.length ? ` · ${planned.missing.length} stage(s) the daemon does not list: ${planned.missing.join(", ")}` : "");
+          // A set that is not declared is the CAUSE; "13 stages missing" is
+          // only what it looks like from here.  Saying the symptom cost a
+          // reader the step in between on this view's first day, against a
+          // deployment whose .env simply named no set.
+          const noSet = !planned.set;
+          const where = (planned.paths && planned.paths.env_file) || "the workspace .env";
+          $("#sub").textContent = noSet
+            ? `no JAATO_PROFILE_SET in ${where} — so the daemon resolves no profile for `
+              + `any of the ${planned.missing.length} stages, and the configuration below is empty`
+            : `no runs under ${list.paths.results} — showing the configured pipeline (set: ${planned.set})`
+              + (planned.missing.length
+                 ? ` · ${planned.missing.length} stage(s) the daemon does not list: ${planned.missing.join(", ")}`
+                 : "");
           render({stages: planned.stages, bands: bandsOf(planned.stages)});
         } else {
           $("#sub").textContent = `no runs under ${list.paths.results} — and the configured `

@@ -156,7 +156,8 @@ def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path]
             except Exception as exc:                      # the daemon's answer, or its absence
                 return JSONResponse({"error": f"{type(exc).__name__}: {exc}"}, 503)
             data = plan.assemble(profiles, profile_set=plan.profile_set_of(_env_file))
-            data["paths"] = {"workspace": str(workspace), "config_root": str(_config_root)}
+            data["paths"] = {"workspace": str(workspace), "config_root": str(_config_root),
+                             "env_file": str(_env_file)}
             return JSONResponse(data)
 
         routes += [
