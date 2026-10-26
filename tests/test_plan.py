@@ -102,3 +102,40 @@ def test_profile_set_is_read_from_the_session_env(tmp_path, text, want):
 
 def test_an_unreadable_env_is_not_a_set(tmp_path):
     assert plan.profile_set_of(tmp_path / "nothing-here") is None
+
+
+def test_resolved_profiles_sends_absolute_paths_across_the_daemon_boundary(tmp_path, monkeypatch):
+    """A relative path cannot cross the boundary, and the board accepts relative ones.
+
+    `run-board --workspace .` reads runs from disk happily, so the plan route
+    must not be the one place that refuses it: the SDK rejects a relative
+    `workspace_path` outright, and the fix is to resolve it in the process
+    whose cwd it is relative to, which is this one.
+    """
+    import asyncio
+
+    from ta_cascade import sessions
+
+    seen = {}
+
+    class _Client:
+        def __init__(self, socket, **kw):
+            seen.update(kw)
+
+        async def connect(self, timeout=None):
+            return False                      # stop before any I/O; the kwargs are the point
+
+        async def disconnect(self):
+            return None
+
+    monkeypatch.setattr(sessions, "IPCRecoveryClient", _Client)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".jaato").mkdir()
+    (tmp_path / ".env").write_text("JAATO_PROFILE_SET=echo\n", encoding="utf-8")
+
+    with pytest.raises(ConnectionError):
+        asyncio.run(sessions.resolved_profiles(
+            socket="/tmp/jaato.sock", workspace=".", config_root=".jaato", env_file=".env"))
+
+    for field in ("workspace_path", "config_root", "env_file"):
+        assert Path(seen[field]).is_absolute(), f"{field} crossed the boundary relative"
