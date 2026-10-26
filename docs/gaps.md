@@ -2599,9 +2599,40 @@ daemon. jaato#1564 is the same defect class at 2× runner-side, and closed.
 
 **Redaction works now, and the reason to leave it off is memory, not
 breakage.** With #104 handing the runner its session key and #106 making a
-disabled session free, the host-wide `JAATO_REDACTION_ENABLED=false` stopped
-being a workaround and became a default worth justifying. It is justified by
+disabled session free, `JAATO_REDACTION_ENABLED=false` stopped being a
+workaround and became a default worth justifying. It is justified by
 measurement, on one workspace that opted in through its own `.env`:
+
+> **CORRECTION, later the same evening: "host-wide" was wrong, and the switch
+> this paragraph credits does not decide anything.** The systemd unit's
+> `Environment=JAATO_REDACTION_ENABLED=false` reaches the DAEMON and not the
+> runner: `runner_spawn.py` spawns a runner with
+> `session_env=resolved_session_env`, and in the runner "the session env IS
+> `os.environ`" (jaato-premium `pseudonymization_runner/plugin.py`).  So the
+> runner never reads the daemon's value.  jaato-premium treats the switch as
+> **ON when unset** ("Unset or blank means ON", `redaction_env.py`), so a
+> workspace that does not declare it is redacted by default, the runner cannot
+> wire it, and premium's `_refuse_unredacted` backstop refuses the session and
+> -- by its own docstring -- "shuts the server down, which releases the
+> runner".  The client then sees `session runner not ready: bootstrap did not
+> complete within 30s` thirty seconds later, which looks like a cold-start
+> fault and is not one.
+>
+> Measured: of four runners forked from one daemon that carries the variable,
+> the three spawned at 22:12, 22:27 and 22:28 had it and the one spawned at
+> 22:37 did not.  The end-to-end tier passed at 21:00 and failed at 22:1x with
+> no code change in either checkout and no daemon restart between; 12 sessions
+> were refused, all of them this repository's, against 273 that ran fine.
+>
+> **So the switch belongs in the workspace `.env`, which is where the runner
+> reads it -- that is configuration in the right place, not a per-driver
+> workaround.** `.env` and the end-to-end fixture now declare it, and the tier
+> is green again (3 passed in 121.77s).  What stays unexplained is why the
+> same fixture passed at 21:00: most plausibly which pooled runner served it,
+> for which there is no evidence here.  The memory measurement below is
+> unaffected -- it was taken on a workspace that opted in through its own
+> `.env`, which is the path that works.
+
 
 | | `Rss` | `Pss` | `Private` | `Shared` |
 |---|---|---|---|---|
