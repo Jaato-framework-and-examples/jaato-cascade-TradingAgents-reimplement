@@ -33,7 +33,7 @@ from starlette.applications import Starlette
 from starlette.responses import FileResponse, JSONResponse
 from starlette.routing import Route
 
-from .. import plan, runview, sweep
+from .. import plan, runview, sweep, version
 
 STATIC = Path(__file__).parent / "static"
 
@@ -90,7 +90,13 @@ def create_app(*, tasks_dir: Optional[Path] = None, results_path: Optional[Path]
     that workspace (``run-board --results <ws>/results --workspace <ws>``)
     rather than this app guessing which arm a cell meant.
     """
-    routes: List[Route] = []
+    async def api_version(request):
+        # Served by BOTH boards and without any path argument: the question
+        # "which revision is this process" has the same answer either way, and
+        # a dashboard tile should not need to know which board it is reading.
+        return JSONResponse(version.report())
+
+    routes: List[Route] = [Route("/api/version", api_version)]
 
     if tasks_dir is not None and results_path is not None:
         async def api_sweep(request):
