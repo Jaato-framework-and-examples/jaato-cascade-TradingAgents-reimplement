@@ -218,8 +218,18 @@ function card(s) {
 
 function render(d) {
   run = d;
-  $("#title").textContent = `${d.ticker} · ${d.trade_date}`;
-  $("#sub").textContent = d.paths.results;
+  // THE CONFIGURATION VIEW HAS NO RUN. It passes stages and bands and nothing
+  // else -- no ticker, no date, no results directory -- so reading those three
+  // unconditionally threw on a board with no runs, the outer catch turned the
+  // TypeError into "cannot reach the board", and the caller's own message was
+  // overwritten on its way out. The page failed in exactly the case this view
+  // was added for, and reported the board unreachable while it served 200s.
+  const hasRun = Boolean(d.paths);
+  $("#title").textContent = hasRun ? `${d.ticker} · ${d.trade_date}` : "configured pipeline";
+  // Only when there IS one: the no-runs caller has already written a better
+  // line here -- which set, which stages the daemon does not list -- and this
+  // would replace it with a path.
+  if (hasRun) $("#sub").textContent = d.paths.results;
 
   const v = d.verdict || {}, m = d.money || {}, e = d.effort || {}, c = d.counts || {};
   // Money: null is withheld on purpose, never zero. A subscription provider
