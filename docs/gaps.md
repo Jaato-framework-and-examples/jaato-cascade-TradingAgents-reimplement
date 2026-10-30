@@ -2871,6 +2871,66 @@ with the listing off the create path. The 2026-10-29 restart read 8.88 s with
 other tenants resident, and a single timing either way is not evidence of a
 framework change.
 
+## Protocol 1.53 (2026-10-30, the same evening): two bumps, and a cache that lies
+
+The third pull of the day moved the daemon 15 commits (`dc5b5dab` ->
+`58d7b333`) and the protocol **1.51 -> 1.53** — TWO bumps in one pull — and
+the client followed to `jaato-sdk 0.30.0rc39`. `jaato-sdk-0.30.0rc39` and
+`jaato-server-1.3.0rc40` are both built from `58d7b333`, which is
+`origin/main` exactly, so the pull and the SDK move were again two halves of
+one step. Measured after: both sides 1.53, doctor at the documented **1 fail,
+8 warn, 25 checks** with the same eight warn lines, freeze diff exactly one
+line out of 52, `pip check` clean, unit **214 passed**, end to end **3 passed
+in 119.70 s**, **40/40 `confined=True`** with no `confined=False` and no
+`enforced=False`. Cold start 3.69 s to `answer_queued` (`runner_ready`
+844 ms, create path 126 ms).
+
+**Both bumps are purely additive, which is why nothing here moved.** 1.52
+(jaato#1978) adds `GatesListRequest`/`GatesDecideRequest` so a caller can list
+and answer the prompts of every session it may see without attaching; 1.53
+(jaato#1981) adds `ScaffoldRenderRequest` so `jaato-scaffold render-request`
+runs through the DAEMON, which an SDK-only client could not do because the
+render needs jaato-server's plugin registry and the provider's own request
+builder. Both are new verbs under the 1.7 rule — an older daemon never
+answers, so the SDK refuses below their `MIN_*` floors — and neither removes
+or re-types a field. In `IPCRecoveryClient` the only changes to what this
+driver calls are new OPTIONAL keywords (`traceparent` / `tracestate`,
+jaato#1977, defaulting to `None`) plus new methods; `session(...)`,
+`complete()` and `ask()` keep their shapes. `jaato-server/pyproject.toml` was
+untouched, so unlike the 1.51 round the daemon's editable install needed no
+re-registration — verified by listing the entry points after the pull rather
+than assumed.
+
+**One behaviour change on an existing route, and it cannot reach us.** 1.52
+makes a late `PermissionResponseRequest` / `ClarificationBatchResponseEvent`
+answer with an `ErrorEvent` (`error_type="GateAlreadyDecided"`) correlated to
+the SENDER, where both were previously broadcast to the session,
+uncorrelated. This driver never sends either: host tools carry
+`auto_approve: True`, which whitelists them with the permission plugin so a
+headless run never prompts. The change strictly REDUCES the stray events an
+observer can see, and `eventlog.py` reads `error_type` through `getattr(...,
+None)` either way.
+
+**`jaato-doctor`'s `package releases` check has a third failure mode: a stale
+cache states the opposite of the truth.** Immediately after installing rc39
+*from its GitHub Release*, the check PASSed with "jaato-sdk 0.30.0rc39 — ...
+jaato-sdk is AHEAD of every release (an unreleased build, which is normal in a
+checkout)". That is wrong twice: rc39 is released, and this is an installed
+wheel, not a checkout build. The cause is `~/.jaato/release_check.json`, whose
+entry carried `fetched_at` **18:54:15** while the rc38 and rc39 Releases were
+created at **19:19** and **21:02**; `DEFAULT_MAX_AGE` is **6 hours**, so at
+22:40 the stale listing still counted as fresh, and its newest `jaato-sdk-*`
+tag was rc37. `jaato-doctor --refresh-release-check` re-fetched and the same
+check then read "newest released on GitHub Releases", which is the proof
+rather than an inference. **So after installing a build released in the last
+six hours, pass `--refresh-release-check` once**, or the check will describe
+the build you just installed as unreleased. This is a third caveat on top of
+the two already recorded in `CLAUDE.md` §2 (it cannot see a private
+repository's Release from an index, and it reports a Release-only build as
+newer than anything it can see): all three make it a weak PASS, and
+`gh release list` in the jaato checkout remains the source of truth for what
+exists.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
