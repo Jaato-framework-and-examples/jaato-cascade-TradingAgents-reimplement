@@ -148,7 +148,8 @@ newer build staged on TestPyPI. The source of truth for what exists is
   reason. The tally to expect is **1 fail, 8 warn, 24 checks**, first on
   2026-10-17 (3.14, SDK 0.30.0rc22) and re-measured 2026-10-23 on SDK
   0.30.0rc30 + jaato-eval 0.3.5rc5. On **2026-10-26** the SDK moved to rc31
-  and the COUNT grew to **1 fail, 8 warn, 25 checks** — rc31 carries a check
+  and the COUNT grew to **1 fail, 8 warn, 25 checks**, re-measured unchanged on
+  2026-10-30 on SDK 0.30.0rc37 + jaato-eval 0.3.5rc6 — rc31 carries a check
   rc30 did not, which is why the instruction below is to compare the LINES and
   not the number. Expect a transient NINTH warn immediately after any SDK
   move: `integration (claude-code)  installed from <old>, framework is <new>`,
@@ -237,9 +238,28 @@ newer build staged on TestPyPI. The source of truth for what exists is
   no `confined=False`. **Pin a deployment by PROTOCOL, not by revision
   proximity**, and re-check the pair after ANY pull of the daemon's checkout:
   moving the daemon moves the protocol, and nothing warns you.
+  On **2026-10-30** that check earned its keep twice in a day: the morning pull
+  moved the protocol **1.49 -> 1.50** (client rc31 -> **rc36**, jaato-eval rc5
+  -> **rc6**) and the evening pull moved it **1.50 -> 1.51** (client ->
+  **rc37**), each caught by reading `origin/main`'s `PROTOCOL_VERSION` BEFORE
+  merging. rc37 is built from `dc5b5dab`, which IS `origin/main` — zero commits
+  apart — so that pull and the SDK move were two halves of one step; align by
+  protocol anyway, because the alignment is timing and not a mechanism.
+  Measured after: both sides 1.51, freeze diff one line of 52, `pip check`
+  clean, unit 214 passed, end-to-end 3 passed in 118.87 s, 40/40
+  `confined=True`.
+  **A pull whose `pyproject.toml` is in the diff needs one more step.** The
+  daemon's venv installs `jaato-server` EDITABLE from the checkout, so a pull
+  moves its code with no reinstall — but entry points live in the installed
+  `.dist-info`, so jaato#1966's new `render-request` scaffold verb was absent
+  after the pull and present after
+  `uv pip install -e jaato-server --no-deps --python <daemon venv>/bin/python`
+  (that venv is uv-managed and carries no `pip`). Re-register BEFORE the
+  restart, so the restart lands on a consistent install; a half-registered
+  state is silent, the verb simply does not exist.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
-  never the fix. See `docs/gaps.md`, 2026-10-17 and 2026-10-23.
+  never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23 and 2026-10-30.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
   (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
   "client and daemon both resolve jaato_sdk from <path>" while printing OUR

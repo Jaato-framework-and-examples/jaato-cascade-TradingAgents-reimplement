@@ -2798,6 +2798,79 @@ to a peer's REPORT OF A THIRD PARTY'S DECISION. The habit that fixes it is
 cheap: quote what the user said, label what you concluded, and keep them in
 separate sentences.
 
+## Protocol 1.51 (2026-10-30): a usage key removed, and a reader that was already right
+
+The second pull of the day moved the daemon 25 commits (`7a210eb6` ->
+`dc5b5dab`) and the protocol **1.50 -> 1.51**, and the client followed to
+`jaato-sdk 0.30.0rc37`. Measured after: both sides report 1.51, doctor reads
+the documented **1 fail, 8 warn, 25 checks** with the same eight warn lines,
+the freeze diff is exactly one line out of 52, `pip check` is clean, unit
+**214 passed**, end to end **3 passed in 118.87 s**, and the tier ran
+**40/40 `confined=True`** with no `confined=False` and no `enforced=False`.
+
+**rc37 and the daemon are the same commit, and that is luck, not mechanism.**
+`git rev-list -n1 jaato-sdk-0.30.0rc37` is `dc5b5dab`, which is `origin/main`
+exactly — zero commits apart — so the pull and the SDK move were two halves of
+one step rather than two decisions. The 2026-10-26 note in `CLAUDE.md` warned
+that revision proximity is not a guarantee and watched it come true in three
+days; this time the pair happened to align. **Pin by protocol, and check the
+pair after every pull**, which is what caught the 1.50 -> 1.51 bump here:
+reading `origin/main`'s `PROTOCOL_VERSION` BEFORE merging is the only step
+that sees it, because `jaato_sdk checkout` is a declared blind spot and
+nothing compares the two sides.
+
+**1.51 removes a key, and the rationale names our class of consumer.**
+`AgentCompletedEvent.token_usage` now declares its keys (jaato#1970):
+`context_tokens`, with `prompt_tokens` and `total_tokens` kept as deprecated
+aliases of the SAME value, and **`output_tokens` is gone** — it was the
+constant 0 on every event, and the upstream comment says "a driver recorded it
+as spend". This driver does not: it reads `token_usage` nowhere, and takes its
+money and token figures from `get_diagnostics()`'s per-session `consumption`
+aspect, which 1.51's own documentation names as the correct source for
+per-session totals. Verified by grep rather than assumed — the whole repository
+contains no reference to `token_usage`, `AgentCompletedEvent` or
+`output_tokens`.
+
+**The money accounting change does NOT move our numbers, and the first guess
+was that it would.** jaato#1972 changed `TurnCompletedEvent.cost_usd` to cover
+every response of a turn, where it used to price the last response only, which
+reads like a figure about to jump. It is not ours: `shared/session_consumption.py`
+is untouched by this pull and already accumulated per RESPONSE
+(`self.cost_usd = (self.cost_usd or 0.0) + cost_usd`, summed again per
+binding into the session total). So the per-session aspect this repository
+reads was already summing what the per-turn event had been missing, and #1972
+closed the gap in the event rather than changing the total. The lesson is the
+one worth keeping: a changelog entry about a field we do not read is not
+evidence about a field we do, and the two had to be separated by reading the
+accumulator before anything could be said about a sweep's comparability.
+
+1.51 also restates the scope of `TurnCompletedEvent.usage` in the schema
+itself — LEVEL readings (`prompt_tokens`, `cache_*`) are the turn's last
+response, SPEND readings (`spend_*`) are summed over the turn's responses, and
+a tool-calling turn legitimately shows `spend_prompt_tokens` near N x
+`prompt_tokens` because each request re-sends the prompt. Nothing here reads
+those per-turn fields today; when something does, `explain event
+TURN_COMPLETED` now renders the scope where it is read.
+
+**An editable install does not pick up a new entry point.** The daemon's venv
+installs `jaato-server` editable from the checkout, so a pull moves its CODE
+with no reinstall — but jaato#1966 added a `render-request` scaffold verb under
+`[project.entry-points."jaato.scaffold_verbs"]`, and entry points live in the
+installed `.dist-info`, not in the tree. After the pull the group listed six
+verbs and not the seventh; `uv pip install -e jaato-server --no-deps` (that
+venv is uv-managed and carries no `pip`) registered it, and the restart then
+landed on a consistent install. A pull whose `pyproject.toml` is in the diff
+needs that check, and a half-registered state is silent: the verb simply does
+not exist.
+
+Cold start after the restart was **4.81 s** to `answer_queued`, of which
+`runner_ready` was 812 ms and the create path 130 ms
+(`session_created` -> `answer_queued`) — the shape jaato#1899 left behind,
+with the listing off the create path. The 2026-10-29 restart read 8.88 s with
+`runner_ready` at 6151 ms. The difference is pool fork time on a host with
+other tenants resident, and a single timing either way is not evidence of a
+framework change.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
