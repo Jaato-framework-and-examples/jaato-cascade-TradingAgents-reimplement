@@ -117,13 +117,25 @@ gh release download jaato-sdk-0.30.0rc31 --repo Jaato-framework-and-examples/jaa
 PIP_CONSTRAINT=pins.txt .venv/bin/pip install --no-index --find-links "$D" "jaato-sdk==0.30.0rc31"
 ```
 
-**`jaato-doctor`'s `package releases` check is now a ONE-DIRECTIONAL signal.**
-It queries the indexes, which a private repository's Release is not, so it
-PASSes ("nothing newer is published") while a newer wheel sits on the Release
-page — and when the venv holds a Release-only build it reports that build as
-newer than anything it can see, which is also silence. It still catches a
-newer build staged on TestPyPI. The source of truth for what exists is
-`gh release list` in the jaato checkout.
+**`jaato-doctor`'s `package releases` check reads GitHub Releases, and its
+PASS is still weak — now for a different reason.** It no longer only queries
+the indexes: `jaato_sdk.release_channels` calls the Releases API
+(`/repos/<repo>/releases`) with a token from `GH_TOKEN`, `GITHUB_TOKEN` or
+`gh auth token`, so a private repository's Release IS visible to it and the
+PASS can say "newest released on GitHub Releases". What it cannot do is answer
+promptly: the listing is CACHED in `~/.jaato/release_check.json`
+(`DEFAULT_MAX_AGE` = **6 hours**), and inside that window a freshly released
+build is described as the opposite of what it is. Measured 2026-10-30: minutes
+after installing rc39 from its Release, the check PASSed with "jaato-sdk is
+AHEAD of every release (an unreleased build, which is normal in a checkout)",
+because the cache had been fetched at 18:54 and rc39 was released at 21:02.
+`jaato-doctor --refresh-release-check` re-fetched and the same check read
+"newest released on GitHub Releases". **So pass `--refresh-release-check` once
+after installing a build released in the last six hours.** The older caveats
+still hold for anything the token cannot see or that is staged on TestPyPI
+only, so treat the PASS as "nothing newer that this check could see just now".
+The source of truth for what exists is `gh release list` in the jaato
+checkout. See `docs/gaps.md`, 2026-10-30.
 
 - `jaato-scaffold` and `jaato-doctor` come with **jaato-sdk**, so a client venv
   has both. `validate` needs no local server: it DELEGATES, and says so —
@@ -149,7 +161,8 @@ newer build staged on TestPyPI. The source of truth for what exists is
   2026-10-17 (3.14, SDK 0.30.0rc22) and re-measured 2026-10-23 on SDK
   0.30.0rc30 + jaato-eval 0.3.5rc5. On **2026-10-26** the SDK moved to rc31
   and the COUNT grew to **1 fail, 8 warn, 25 checks**, re-measured unchanged on
-  2026-10-30 on SDK 0.30.0rc37 + jaato-eval 0.3.5rc6 — rc31 carries a check
+  2026-10-30 on SDK 0.30.0rc37 and again on **0.30.0rc39**, both with
+  jaato-eval 0.3.5rc6 — rc31 carries a check
   rc30 did not, which is why the instruction below is to compare the LINES and
   not the number. Expect a transient NINTH warn immediately after any SDK
   move: `integration (claude-code)  installed from <old>, framework is <new>`,
@@ -257,6 +270,17 @@ newer build staged on TestPyPI. The source of truth for what exists is
   (that venv is uv-managed and carries no `pip`). Re-register BEFORE the
   restart, so the restart lands on a consistent install; a half-registered
   state is silent, the verb simply does not exist.
+  **A pull can move the protocol more than one step.** The same evening's third
+  pull moved it **1.51 -> 1.53** at once (client rc37 -> **rc39**): 1.52 adds
+  the gate verbs (jaato#1978) and 1.53 `render-request` through the daemon
+  (jaato#1981), both purely additive new verbs under the 1.7 rule, with the
+  only changes to what this driver calls being new OPTIONAL keywords
+  (`traceparent` / `tracestate`, jaato#1977). rc39 and jaato-server 1.3.0rc40
+  are both built from `58d7b333` = `origin/main`. Measured: both sides 1.53,
+  freeze diff one line of 52, unit 214 passed, end-to-end 3 passed in
+  119.70 s, 40/40 `confined=True`. `pyproject.toml` was untouched this time,
+  so no entry-point re-registration was needed — verified by listing the
+  verbs after the pull rather than assumed.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
   never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23 and 2026-10-30.
