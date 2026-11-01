@@ -3103,6 +3103,72 @@ groups were present and the extension log shows pseudonymization, gossip and
 reactors started clean. The editable link is one command away if the operator
 wants premium tracked from the checkout again.
 
+## A fifth repository, and the framework starts warning about our own ceilings (2026-11-01)
+
+`Jaato-framework-and-examples/jaato-agent-service-contract` now feeds this
+host. `jaato-agent-service` **0.1.0rc1** was installed into the **daemon's**
+venv with the `runtime` extra: checksums verified, constrained against the
+daemon's own 193 pinned lines and `--no-index`, so nothing could be upgraded
+or fetched — `[runtime]`'s four dependencies (starlette, uvicorn,
+pyjwt[crypto], pyyaml) were all already satisfied there, and the 200-line
+freeze gained exactly one line.
+
+**What decided the target was the entry points, not the name.** The package
+registers `agent-service` under `jaato.scaffold_verbs` and
+`jaato.scaffold_validators`, and `agent-service` + `authz` under
+`jaato.scaffold_topics` — which are exactly the three groups
+`jaato-server`'s scaffold consumes, and `jaato-server` lives only in the
+daemon's venv. The recipe as handed over used a bare `pip`, which on this host
+is `/usr/bin/pip` on system **python 3.12**: nothing jaato runs on 3.12, and
+installing there would have put the contract in an interpreter no jaato
+process uses. Naming the interpreter is the whole of the fix.
+
+**Two operational facts, measured rather than assumed.** A new entry point
+reaches the RUNNING daemon with no restart: immediately after the install, and
+before any restart, `jaato-scaffold explain agent-service` from the CLIENT venv
+answered and printed *"[answered by the daemon at /tmp/jaato.sock
+(jaato-server 1.3.0) — not this venv]"*. A new VERB does not travel: verbs run
+locally, so `jaato-scaffold agent-service` is an "invalid choice" from this
+client venv and offers `new` / `check` / `authz` from the daemon venv's own
+`jaato-scaffold`. Releases are kept at `~/jaato-releases/<tag>/`, one
+directory per tag with its `SHA256SUMS`, because uv records the install's
+source path and a session scratchpad is gone by the next session.
+
+**And then the daemon started answering a question this repository had been
+measuring by hand.** Re-counting `validate` after the install surfaced 13 new
+workspace warns on three of the four sets — not from the new package (the
+finding carries no `(from jaato-premium:…)` suffix either, so it is
+jaato-server's own), but from jaato#1994's other half, which arrived with this
+round's daemon pull and which nothing had re-counted yet:
+`budget_usd_unpriced`, **one per stage whose `usd` ceiling has no cost
+source**. Per set, workspace tier:
+
+| set | `budget_usd_unpriced` stages | `usd` ceiling |
+|---|---|---|
+| `openrouter_sonnet` | 0 | **live** |
+| `minimax_m3` | 13 | inert |
+| `anthropic_sonnet` | **13** | inert |
+| `echo` | 13 | inert |
+
+That reproduces, statically and for free, exactly what the backtest records
+showed empirically earlier the same day (pilot 60/60 priced, determinism 5/5,
+predict-2026-10 0/33) — and it settles the one cell those records could not
+reach. **`anthropic_sonnet` was recorded hours earlier in this file as
+UNMEASURED, a prediction awaiting a real run; `validate` prices the model
+without running anything and reports all 13 stages unpriced.** The prediction
+was right, and the way it got confirmed is the point: the answer cost no
+provider spend, and the trap's original claim that "nothing warns you which"
+is now wrong and has been corrected in `CLAUDE.md` rather than left standing.
+
+The finding also names the remedy this repository had already arrived at
+independently — *"Add a Litellm-style entry … or bound the run with another
+dimension (model_turns stops a tool loop inside one prompt)"* — which is the
+same pair of decisions raised on 2026-11-01 and still the user's: a
+`pricing.json` entry per non-OpenRouter model, or `model_turns` on the 13
+ceilings. The new baseline to expect, all four sets exiting 0 with zero
+workspace-tier errors: `openrouter_sonnet` 4 warn, `minimax_m3` and
+`anthropic_sonnet` 17 warn, `echo` 16 warn + 13 info.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

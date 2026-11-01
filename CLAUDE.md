@@ -99,6 +99,50 @@ a newer build published there, so take a `pip freeze` before and after and
 diff it: on 2026-10-09 each of the two installs moved exactly one line. The
 absence of a complaint from pip is not the same evidence.
 
+**A FIFTH repository now feeds this host: `jaato-agent-service-contract`.**
+`jaato-agent-service` ("the jaato agent-service contract as code: the
+Application interface, the tenant journal, and the runtime") is published only
+as a GitHub Release of its own repository, and it belongs in the **DAEMON's
+venv**, never this client's. What decides that is not the name but the entry
+points: it registers `agent-service` under `jaato.scaffold_verbs` and
+`jaato.scaffold_validators`, and `agent-service` + `authz` under
+`jaato.scaffold_topics` — the three groups `jaato-server`'s scaffold consumes.
+Installed 2026-11-01 at **0.1.0rc1**:
+
+```bash
+tag=jaato-agent-service-0.1.0rc1
+gh release download "$tag" -R Jaato-framework-and-examples/jaato-agent-service-contract \
+    -D "$HOME/jaato-releases/$tag"
+(cd "$HOME/jaato-releases/$tag" && sha256sum -c SHA256SUMS)
+# NOT bare `pip`: on this host that is /usr/bin/pip on system python 3.12,
+# and nothing jaato runs on 3.12.  Name the daemon's 3.14 interpreter, and
+# constrain, so the extra cannot upgrade anything already there.
+uv pip freeze --python ~/.local/share/jaato/venv/bin/python \
+  | grep -E '^[A-Za-z0-9_.-]+==' > /tmp/dpins.txt
+uv pip install --python ~/.local/share/jaato/venv/bin/python -c /tmp/dpins.txt \
+    --no-index --find-links "$HOME/jaato-releases/$tag" \
+    "jaato-agent-service[runtime]==0.1.0rc1"
+```
+
+`[runtime]` wants starlette, uvicorn, pyjwt[crypto] and pyyaml, and **all four
+were already satisfied in the daemon venv**, so `--no-index` downloaded
+nothing and the 200-line freeze gained exactly one line. Keep the releases
+under `~/jaato-releases/<tag>/` — one directory per tag, with its
+`SHA256SUMS` — because that is the path uv records as the install's
+provenance, and a scratchpad path is gone by the next session.
+
+**A new entry point reaches the RUNNING daemon without a restart; a new VERB
+does not travel between venvs.** Measured right after that install, with no
+restart: `jaato-scaffold explain agent-service` from THIS client venv answered
+and printed *"[answered by the daemon at /tmp/jaato.sock (jaato-server 1.3.0)
+— not this venv]"*, so the daemon had already discovered the topic, and the
+new `budget_usd_unpriced` validator was likewise live. But
+`jaato-scaffold agent-service …` is a VERB, which runs locally, so it exists
+only where the package is installed — from this client venv it is an "invalid
+choice", and from `~/.local/share/jaato/venv/bin/jaato-scaffold` it offers
+`new`, `check` and `authz`. Run the verb from the daemon's venv; expect
+`explain` and `validate` to follow the daemon.
+
 **`jaato-premium` is the DAEMON's package, and since 2026-11-01 it is a
 WHEEL there, not an editable checkout.** It never belongs in this client venv
 (`premium reactors  jaato-premium not installed … N/A` is the correct reading
@@ -385,7 +429,11 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   `--json`.
   Baseline for this workspace, re-measured 2026-11-01 on SDK 0.30.0rc40:
   **zero workspace-tier errors** in all four sets; openrouter_sonnet,
-  minimax_m3 and anthropic_sonnet 4 warn each, echo 3 warn + 13 info. That is
+  minimax_m3 and anthropic_sonnet **17 warn** each, echo **16 warn + 13 info**
+  on rc41 + jaato-premium 0.1.215 — the 13 extra warns on the last three are
+  one `budget_usd_unpriced` per stage (trap #14), a correct finding about a
+  real inert ceiling and the reason these counts now differ BY SET. On rc40 it
+  read 4 warn each and echo 3 warn + 13 info, which was
   one warn more than the 2026-10-06 baseline (3/3/2+13) because rc40 carries
   two NEW workspace checks, both of which are open decisions and neither of
   which is a defect in what is committed here:
@@ -933,7 +981,20 @@ for `rules_read`.
     `_base_<agent>` ceilings do not declare it yet. Adding it is still a
     sizing decision about this pipeline (see `docs/gaps.md`, 2026-11-01).
 14. **The `usd` ceiling is LIVE on `openrouter_sonnet` and INERT on
-    `minimax_m3`, and nothing warns you which.** `explain profile` (rc41,
+    `minimax_m3`, and since 2026-11-01 `validate` SAYS SO, per stage.**
+    CORRECTION to the first wording of this trap, which said "nothing warns
+    you which": jaato#1994's other half is a validator finding,
+    `budget_usd_unpriced`, raised once per stage whose `usd` ceiling has no
+    cost source. Counted per set, workspace tier: `openrouter_sonnet` **0**,
+    `minimax_m3` **13**, `anthropic_sonnet` **13**, `echo` **13**. It names
+    the model it could not price and recommends the alternative: *"no cost
+    source prices anthropic/claude-sonnet-5-5 … so usd stays 0 and the usd
+    ceiling never fires. Add a Litellm-style entry … or bound the run with
+    another dimension (model_turns stops a tool loop inside one prompt)."*
+    So **`anthropic_sonnet` is MEASURED inert, not predicted** — 13 of 13
+    stages, answered statically with no run and no provider spend. The
+    finding carries no `(from jaato-premium:…)` suffix, so it is
+    jaato-server's own check. `explain profile` (rc41,
     jaato#1994): `usd` is "the provider's reported cost, else the operator
     pricing table (`.jaato/pricing.json`, exact model name) x the reported
     tokens. **Never estimated**: with neither source … it stays 0 and a usd
@@ -949,7 +1010,8 @@ for `rules_read`.
     four declared dimensions bound nothing**: `usd` has no data to accumulate
     and `turns` cannot bound a tool loop (trap #13), leaving `tool_calls` and
     `seconds`. `anthropic_sonnet` has never run a full pipeline, so it is
-    UNMEASURED rather than assumed — it is a native provider with no pricing
+    ANSWERED STATICALLY by `validate` (trap #14): 13 of 13 stages unpriced, no
+    run needed. Recorded here first as a prediction, now confirmed — it is a native provider with no pricing
     entry, which is the shape that comes out inert, but that is a prediction
     and not a measurement. Either give `pricing.json` an entry per model or
     stop treating `usd` as a guard off OpenRouter; see `docs/gaps.md`,
