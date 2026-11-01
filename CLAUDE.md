@@ -153,18 +153,25 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   (`[board]`). PyYAML used to arrive transitively from jaato-server and was
   never declared — two tests skipped silently the first time the venv was
   built correctly.
-- **`jaato-doctor` reports one FAIL in a correct client venv**:
-  `import jaato_server … required for autostart`. It does not apply here —
-  `RunConfig.auto_start=False` against a shared daemon never starts one — and
-  the `jaato_server checkout` skew check degrades to a WARN for the same
-  reason. The tally to expect is **1 fail, 8 warn, 24 checks**, first on
-  2026-10-17 (3.14, SDK 0.30.0rc22) and re-measured 2026-10-23 on SDK
-  0.30.0rc30 + jaato-eval 0.3.5rc5. On **2026-10-26** the SDK moved to rc31
-  and the COUNT grew to **1 fail, 8 warn, 25 checks**, re-measured unchanged on
-  2026-10-30 on SDK 0.30.0rc37 and again on **0.30.0rc39**, both with
-  jaato-eval 0.3.5rc6 — rc31 carries a check
-  rc30 did not, which is why the instruction below is to compare the LINES and
-  not the number. Expect a transient NINTH warn immediately after any SDK
+- **`jaato-doctor` PASSES a correct client venv as of SDK 0.30.0rc40, and the
+  baseline is now `0 fail, 7 warn, 25 checks` with EXIT 0** (jaato#1576,
+  measured 2026-11-01). The long-standing single FAIL —
+  `import jaato_server … required for autostart` — is gone: the check now reads
+  "not installed here (a client-only environment)" and PASSES, because a client
+  against a shared daemon never autostarts one, which is this layout's whole
+  point. `mcp sdk` turned PASS in the same move ("N/A — MCP runs in the
+  daemon's environment"), so the eight warns became seven. **Doctor exiting
+  non-zero is therefore a real signal again**, where for six weeks it was
+  noise to be read past. The seven remaining warns are all "cannot check from
+  a client venv" or "nothing asked": `dependency coherence`,
+  `jaato_sdk checkout`, `jaato_server checkout`, `daemon env`,
+  `secret resolution`, `secret scrub`, `driver`.
+  The HISTORY, kept because it dates each measurement: the tally was
+  **1 fail, 8 warn, 24 checks** on 2026-10-17 (3.14, SDK 0.30.0rc22) and
+  2026-10-23 (rc30 + jaato-eval 0.3.5rc5); on **2026-10-26** rc31 added a
+  check and it became **1 fail, 8 warn, 25 checks**, re-measured unchanged on
+  2026-10-30 (rc37) and again on rc39. Compare the LINES and not the number —
+  which is exactly how this change was caught. Expect a transient NINTH warn immediately after any SDK
   move: `integration (claude-code)  installed from <old>, framework is <new>`,
   because the skill ships as package data of the SDK; `jaato-scaffold
   integration claude-code --force` clears it. On 2026-10-17 it went to 9 warn when
@@ -281,9 +288,23 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   119.70 s, 40/40 `confined=True`. `pyproject.toml` was untouched this time,
   so no entry-point re-registration was needed — verified by listing the
   verbs after the pull rather than assumed.
+  **2026-11-01: 1.53 -> 1.55, client rc39 -> `0.30.0rc40`.** Two additive
+  bumps again — 1.54 adds `GatesDecideRequest.approver` (jaato#859/#1978, a
+  service naming the person a gate was answered FOR) and 1.55 adds
+  `SessionLookupRequest` (jaato#1129), which is the one this driver gains
+  something from: a `session.new` whose confirmation times out may still have
+  created the session, and the facades now poll the lookup by the client-minted
+  `request_id` and ATTACH before raising `SessionNotConfirmed`. Both sides
+  1.55, freeze diff one line of 52, unit 214 passed, end-to-end 3 passed in
+  138.82 s, 40/40 `confined=True`. rc40 and jaato-server 1.3.0rc41 are both
+  built from `9670521e` = `origin/main`; `jaato-server/pyproject.toml` was
+  untouched, so no entry-point re-registration (verified by listing the verbs,
+  not assumed). This is the pull that moved the doctor baseline and fixed
+  `validate`'s exit code — see both bullets above.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
-  never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23 and 2026-10-30.
+  never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23, 2026-10-30 and
+  2026-11-01.
 - **`jaato_sdk checkout` now says it cannot tell, instead of PASSing**
   (jaato#1610, fixed in SDK 0.30.0rc16; from 0.29.0 to 0.30.0rc6 it reported
   "client and daemon both resolve jaato_sdk from <path>" while printing OUR
@@ -301,17 +322,30 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   and the `AttributeError` surfaces frames away from the cause. With
   `dependency coherence` and `jaato_server checkout` also unavailable (#1576),
   nothing in doctor DETECTS such a mismatch for us; all three now admit it.
-- **`jaato-scaffold validate <workspace>` exits 1 on findings that are not
-  this workspace's.** It walks the USER tier too (`~/.jaato/profiles/`, a real
-  fallback in the resolution path) and, as of jaato `0ccb7069`, 13 errors in
-  other projects' profiles there decide the exit code: 105 of the 108 lines
-  printed are theirs. So the §10 pre-commit gate
-  (`validate --set openrouter_sonnet && validate --set echo`) now fails for a
-  cause nobody can fix from this repo. Read the `tier` field
-  (`--json`) or `grep '\[workspace\]'` and judge OUR findings by those;
-  `--profile <name>` scopes to one profile and exits 0. Baseline for this
-  workspace, unchanged since 2026-10-06: openrouter_sonnet 3 warn,
-  minimax_m3 3 warn, echo 2 warn + 13 info, **zero errors**.
+- **`jaato-scaffold validate <workspace>` fails only on what the workspace
+  OWNS, since jaato#1217 — so the §10 gate works as written again.** It still
+  walks the USER and PREMIUM tiers (`~/.jaato/profiles/` is a real fallback in
+  the resolution path) and still PRINTS their findings, but they no longer
+  decide the exit code. Measured 2026-11-01: all four sets exit **0** while one
+  `[error] [user]` line (`gen-references: unknown_plugin: flow_tools`) is
+  reported — which is the fix demonstrated, since that error is unfixable from
+  this repo. Before #1217, 13 such errors decided the exit code and 105 of 108
+  printed lines were other projects'.
+  **The output format changed too: severity is now a LOWERCASE prefix**
+  (`[warn] [workspace] …`, `[error] [user] …`), so a filter written for
+  `ERROR` matches nothing and silently reports zero. Count with
+  `grep -F '[workspace]' | grep '^\[error\]'`, or read the `tier` field from
+  `--json`.
+  Baseline for this workspace, re-measured 2026-11-01 on SDK 0.30.0rc40:
+  **zero workspace-tier errors** in all four sets; openrouter_sonnet,
+  minimax_m3 and anthropic_sonnet 4 warn each, echo 3 warn + 13 info. That is
+  one warn more than the 2026-10-06 baseline (3/3/2+13) because rc40 carries
+  two NEW workspace checks, both of which are open decisions and neither of
+  which is a defect in what is committed here:
+  `regulatory_undeclared` (no profile declares a `regulatory:` block; the EU
+  AI Act determination is the provider's under Art. 6(4), so it is the user's
+  call, not an agent's) and `redaction_knob_in_dotenv` — see
+  `docs/gaps.md`, 2026-11-01, for why the second one matters.
 
 ### Commands
 
@@ -387,6 +421,15 @@ jaato-scaffold explain provider openrouter # knobs by layer
 jaato-scaffold explain archetype cascade   # what `new cascade` writes and why
 jaato-scaffold new <archetype> ... --dry-run
 ```
+
+**The protocol's own history is now readable from the SDK** (jaato#1016,
+2026-11-01): `jaato_sdk/protocol_changelog.md` is the single record of what
+every `PROTOCOL_VERSION` added, read at runtime by
+`jaato_sdk.protocol_changelog` and checked against `PROTOCOL_VERSION` by the
+framework's own tests. It used to be a comment block at the top of
+`events.py`, which is why that file shrank by ~658 lines and
+`PROTOCOL_VERSION` moved from line 817 to line 64. Read the changelog, not
+the diff, when deciding whether a bump touches this driver.
 
 The skill `jaato-sdk` is the condensed version of this. It ships WITH the
 framework (package data of `jaato-server`), so it cannot describe a different
