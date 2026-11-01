@@ -2931,6 +2931,92 @@ newer than anything it can see): all three make it a weak PASS, and
 `gh release list` in the jaato checkout remains the source of truth for what
 exists.
 
+## Protocol 1.55 (2026-11-01): the client venv stops being a failure, and two new checks
+
+The pull moved the daemon 31 commits (`58d7b333` -> `9670521e`) and the
+protocol **1.53 -> 1.55**; the client followed to `jaato-sdk 0.30.0rc40`,
+built from that same commit (as is jaato-server 1.3.0rc41). Measured after:
+both sides 1.55, freeze diff exactly one line out of 52, `pip check` clean,
+unit **214 passed**, end to end **3 passed in 138.82 s**, **40/40
+`confined=True`** with no `confined=False` and no `enforced=False`. Cold start
+4.45 s to `answer_queued` (`runner_ready` 827 ms, create path 125 ms). Today's
+only ERROR lines in the daemon log are the documented observer-disconnect
+pair (trap #6), six of each.
+
+**Both protocol bumps are additive, and one of them is ours.** 1.54 adds
+`GatesDecideRequest.approver`; nothing here answers gates. 1.55 adds
+`SessionLookupRequest` (jaato#1129) and that one matters: a `session.new`
+whose confirmation does not arrive in time **may still have created the
+session**, and until now the client's only outcome was `SessionNotConfirmed`
+after 60 s with the session orphaned daemon-side. The daemon now records every
+`session.new` under the `request_id` the CLIENT minted, keeps it in the
+daemon-owned session-workspace index so a lookup survives an unload or a
+restart, answers only the identity that sent the create, and the facades poll
+it and ATTACH before raising. Nothing is guessed — no name, profile or cascade
+is matched. `sessions.open_stage` gets this for free, because it goes through
+`IPCRecoveryClient.session(...)`. This is the mechanism `CLAUDE.md` §4's
+`agent_params` trap describes the symptom of ("the caller only sees a 60 s
+`SessionNotConfirmed`"); the trap's CAUSE is unchanged, but the create is no
+longer lost when the cause is load rather than a bad param.
+
+**`jaato-doctor` no longer FAILS a client-only venv (jaato#1576), so the
+baseline is `0 fail, 7 warn, 25 checks` and doctor EXITS 0.** For six weeks
+the documented tally opened with a FAIL that did not apply —
+`import jaato_server … required for autostart`, against a shared daemon this
+client never autostarts — and the instruction was to read past it. The check
+now PASSES with "not installed here (a client-only environment)", and
+`mcp sdk` PASSES too ("MCP runs in the daemon's environment"), taking the
+warns from eight to seven. The practical gain is larger than the number: a
+non-zero doctor exit is a real signal again, where before it was noise, so it
+can go in a pre-commit gate without being ignored.
+
+**`jaato-scaffold validate` fails only on what the workspace owns
+(jaato#1217), which un-breaks the §10 gate.** Recorded on 2026-10-06 as a gap
+nobody could fix from here: 13 errors in other projects' `~/.jaato/profiles/`
+decided the exit code, 105 of 108 printed lines were theirs, and
+`validate --set openrouter_sonnet && validate --set echo` therefore failed for
+a cause outside this repository. Measured now: all four sets exit **0** while
+one `[error] [user]` line (`gen-references: unknown_plugin: flow_tools`) is
+still PRINTED. Reported but not fatal is exactly the right shape — the
+finding stays visible to whoever can fix it without blocking whoever cannot.
+
+**A measurement correction, because it was cited as evidence twice.** The
+validate output's severity is now a LOWERCASE prefix (`[warn] [workspace] …`),
+and the check used in the 2026-10-30 rounds was
+`grep -c '\[workspace\].*ERROR'` — an uppercase pattern that matches nothing
+and so reports zero whatever is there. The CONCLUSION it was used to support
+held (re-counted with `grep '^\[error\]'`: zero workspace-tier errors in all
+four sets), but the check could not have detected otherwise. A filter that
+cannot fail is not evidence, and a count of zero is the one result that looks
+identical whether the filter works or not.
+
+**Two NEW workspace checks, both open decisions rather than defects.** The
+workspace warn count went 3 -> 4 per provider set, and the additions are:
+
+* `regulatory_undeclared` — no profile here declares a `regulatory:` block, so
+  nothing states the intended purpose, the provider, or whether natural
+  persons interact with it, and every other EU AI Act check waits on that
+  declaration. Absent is UNDECLARED, never minimal. The determination is the
+  provider's under Art. 6(4), so it is the user's to make and is NOT recorded
+  here as a gap an agent should close.
+* `redaction_knob_in_dotenv` — **`JAATO_REDACTION_ENABLED` in the workspace
+  `.env` can be rewritten by a confined session** (the framework permits
+  editing `.env`), and the next session reads whatever it finds. The check's
+  remedy is each profile's `env:` block, which OUTRANKS `.env` and is
+  write-denied. This lands directly on PR #44 of 2026-10-29, which moved that
+  flag out of the systemd unit and into the session env; the reasoning there
+  was right about the LAYER (the runner reads the session env) and the
+  framework is now naming a strictly better place within it. Writing the
+  flag into thirteen profiles is a change to committed `.jaato/` data and a
+  decision about who may flip redaction, so it is raised for the user rather
+  than taken.
+
+The protocol's history also moved: `jaato_sdk/protocol_changelog.md` is now
+the single record of every `PROTOCOL_VERSION`, read at runtime by
+`jaato_sdk.protocol_changelog` (jaato#1016), which is why `events.py` lost
+~658 lines. Every name this repository imports from the SDK survived that
+restructure — checked by importing all seven rather than by reading the diff.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
