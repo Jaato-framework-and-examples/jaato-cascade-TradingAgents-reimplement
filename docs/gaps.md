@@ -3017,6 +3017,92 @@ the single record of every `PROTOCOL_VERSION`, read at runtime by
 ~658 lines. Every name this repository imports from the SDK survived that
 restructure — checked by importing all seven rather than by reading the diff.
 
+## Two of four ceilings bound nothing (2026-11-01, second round)
+
+The pull moved the daemon 7 commits (`9670521e` -> `ef418cd5`) and **did not
+move the protocol**: both sides stayed **1.55**, the first round in a week
+where the pre-merge check answered "nothing to reconcile". The client went to
+`jaato-sdk 0.30.0rc41` (built from `ef418cd5`, the same commit) and
+`jaato-premium` went **0.1.211 -> 0.1.215** in the DAEMON's venv. Measured:
+client freeze diff one line of 52, daemon freeze diff one line of 200, `pip
+check` clean, doctor **0 fail, 7 warn, 25 checks**, unit **214 passed**, end
+to end **3 passed in 126.73 s**, **40/40 `confined=True`**.
+
+**jaato#1994 resolves trap #13, and the fix names the problem instead of
+hiding it.** `explain profile` on rc41 states both meanings where they are
+read: `turns` counts CALLER turns — "one send_message / complete() / ask() /
+session.wake, counted when it ENDS; a tool loop inside one prompt is one turn
+and cannot cross this ceiling while it runs" — and the new `model_turns`
+counts MODEL round-trips, "one provider response inside the chat loop,
+counted as it arrives, so an abort rung stops a tool loop inside one prompt
+(what the session record's `turn_count` approximates)". That is trap #13 in
+the framework's own words, and it vindicates the 2026-10-25 measurement
+(`budget_usage.turns` 1.0 on all ten sessions while `turn_count` ran 1 … 7,
+the trader reaching 7 against `turns: 6` with no abort). The right fix was
+never to redefine `turns`; it was a second dimension, which is what landed.
+**The 13 `_base_<agent>` ceilings do not declare `model_turns`.** Adding it
+is a sizing decision about this pipeline, so it is raised and not taken.
+
+**And `usd` is inert on `minimax_m3`, which the same `explain` output
+explains.** `usd` is "the provider's reported cost, else the operator pricing
+table (`.jaato/pricing.json`, exact model name) x the reported tokens. Never
+estimated: with neither source … it stays 0 and a usd ceiling is inert."
+There is **no `pricing.json` in this workspace nor in `~/.jaato/`**, so the
+dimension depends entirely on the provider reporting a cost. This
+repository's own records settle which do:
+
+| record | set | arms priced | sum |
+|---|---|---|---|
+| `backtests/pilot/results.jsonl` | `openrouter_sonnet` | **60 of 60** | $47.18 |
+| `backtests/determinism/results.jsonl` | `openrouter_sonnet` | **5 of 5** | $4.15 |
+| `backtests/predict-2026-10/results.jsonl` | `minimax_m3` | **0 of 33** | — |
+
+and the NVDA 2026-10-17 run reports `cost_usd: None` on every session beside
+real token counts (15k … 108k) — *measured but unpriced*, the middle of
+`sessionlog.py`'s three money states, which that module already refuses to
+render as $0.00. So **on `minimax_m3` two of the four declared dimensions
+bound nothing**: `usd` never accumulates and `turns` cannot bound a tool loop,
+leaving `tool_calls: 30` and `seconds: 480` as the only live guards. On
+`openrouter_sonnet` all but `turns` are live. `anthropic_sonnet` has never run
+a full pipeline, so it is **unmeasured**: it is a native provider with no
+pricing entry, which is the shape that comes out inert, but that is a
+prediction and is recorded as one.
+
+Two decisions follow, both the user's: declare `model_turns` on the 13
+ceilings (and at what number), and either give `.jaato/pricing.json` an entry
+per non-OpenRouter model or stop treating `usd` as a guard anywhere but
+OpenRouter. Neither is a defect in what is committed; both are the kind of
+ceiling-sizing choice trap #13 already said is not a consequence of reading
+telemetry.
+
+**jaato#2012 matters here more than its title suggests.** "A read does not
+rewrite a session record" — and `ta_cascade/runview.py` reads
+`.jaato/sessions/<id>.json` on *every* board request, which is the whole
+reason the boards can render a run whose daemon has since restarted. A read
+path that rewrote what it read would have had the board mutating the daemon's
+own records as a side effect of someone refreshing a page. Nothing here
+changed; the hazard simply stopped existing.
+
+**Premium's install topology changed, deliberately.** `jaato-premium` was an
+EDITABLE install in the daemon's venv, pointing at the `jaato-premium` sibling
+checkout — and that checkout is shared: on 2026-11-01 it was 45 commits behind
+its own `origin/main` and dirty with another session's work
+(`.advisor-coordination-ask.md`, `.claude/`, a modified doc), while the daemon
+reported 0.1.211 against a tree declaring 0.1.212, so the installed metadata
+did not match the code being loaded. Pulling that checkout to move premium
+would have moved 45 commits under another session's uncommitted work, so the
+release WHEEL was installed instead (checksums verified, `--no-deps` so the
+`pseudonymization` extras already present — pynacl 1.6.2, presidio-analyzer
+2.2.362 — were kept, and the daemon's 200-line freeze moved exactly one line).
+Two details worth keeping: uv records the wheel's SOURCE PATH, so the wheel
+was staged at `~/.local/share/jaato/wheels/` rather than left in a session
+scratchpad that disappears; and premium's entry points were re-checked after
+the restart, because `jaato.premium` carries `secret_resolvers` and a premium
+that loads without them takes every tenant's `pass://` with it. All four
+groups were present and the extension log shows pseudonymization, gossip and
+reactors started clean. The editable link is one command away if the operator
+wants premium tracked from the checkout again.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).

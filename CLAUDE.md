@@ -99,6 +99,41 @@ a newer build published there, so take a `pip freeze` before and after and
 diff it: on 2026-10-09 each of the two installs moved exactly one line. The
 absence of a complaint from pip is not the same evidence.
 
+**`jaato-premium` is the DAEMON's package, and since 2026-11-01 it is a
+WHEEL there, not an editable checkout.** It never belongs in this client venv
+(`premium reactors  jaato-premium not installed … N/A` is the correct reading
+of doctor here); it supplies the daemon's `secret_resolvers` — which is what
+makes every `pass://` in these profiles resolve — plus `pseudonymization`,
+`gossip` and `reactors`. The other four jaato packages in the daemon's venv
+are editable installs from the `jaato` checkout, so a pull moves them; premium
+was editable from the **`jaato-premium` sibling checkout**, and that checkout
+is shared with other sessions. On 2026-11-01 it was 45 commits behind its
+`origin/main` AND dirty with another session's work, while the daemon reported
+0.1.211 against a tree declaring 0.1.212 — so the installed metadata did not
+even match the code being loaded. Moving premium therefore means installing
+the RELEASE wheel, never pulling that checkout:
+
+```bash
+cd ../jaato-premium && gh release list                     # jaato-premium-<version>
+D=$(mktemp -d); gh release download jaato-premium-0.1.215 \
+    --repo Jaato-framework-and-examples/jaato-premium --dir "$D"
+(cd "$D" && sha256sum -c SHA256SUMS)                       # CHECK them
+# Stage it where the record still resolves later: uv records the SOURCE PATH,
+# and a scratchpad path is gone by the next session.
+W=~/.local/share/jaato/wheels; mkdir -p "$W"; cp "$D"/*.whl "$D"/SHA256SUMS "$W"/
+# --no-deps: every base dep was already satisfied, and it KEEPS the
+# pseudonymization extras (pynacl, presidio-analyzer) that are installed.
+uv pip install --python ~/.local/share/jaato/venv/bin/python --no-deps \
+    "$W"/jaato_premium-0.1.215-py3-none-any.whl
+```
+
+Then restart the daemon and check the entry points came with it —
+`jaato.premium` must still list `instructions`, `profiles`, `prompt_provider`
+and **`secret_resolvers`** — because a premium that loads without its
+resolvers takes every tenant's `pass://` with it. To hand premium back to the
+checkout, `uv pip install -e ../../jaato-premium` into that venv restores the
+editable link.
+
 **A build that lives only on a GitHub Release.** The jaato repository is
 private, and jaato#1816 gave its four publish workflows a `target: release`
 that runs the same gate and build steps and attaches the wheel, the sdist and
@@ -301,6 +336,18 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   untouched, so no entry-point re-registration (verified by listing the verbs,
   not assumed). This is the pull that moved the doctor baseline and fixed
   `validate`'s exit code — see both bullets above.
+  **2026-11-01, second round: the protocol did NOT move.** rc40 -> `0.30.0rc41`
+  and the daemon `9670521e` -> `ef418cd5` (7 commits) both stayed at **1.55**,
+  the first round in a week where checking before merging said "nothing to
+  reconcile" — which is still the check that establishes it. `jaato-premium`
+  moved 0.1.211 -> **0.1.215** in the DAEMON's venv by the wheel recipe above.
+  Measured: both sides 1.55, client freeze diff one line of 52, daemon freeze
+  diff one line of 200, `pip check` clean, doctor **0 fail, 7 warn, 25
+  checks**, unit 214 passed, end-to-end 3 passed in 126.73 s, 40/40
+  `confined=True`. That pull is also the one that resolved trap #13 (#1994)
+  and stopped a read from rewriting a session record (#2012) — which matters
+  here because `runview` reads `.jaato/sessions/<id>.json` on every board
+  request.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
   never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23, 2026-10-30 and
@@ -871,8 +918,42 @@ for `rules_read`.
     later. `runview` reports BOTH numbers and flags the disagreement rather
     than picking one; the `turns` entries in every `_base_<agent>` ceiling have
     not been changed, because re-sizing a ceiling is a decision about this
-    pipeline and not a consequence of reading its telemetry. NOT yet filed
-    upstream.
+    pipeline and not a consequence of reading its telemetry.
+    **RESOLVED UPSTREAM on 2026-11-01 by jaato#1994, and the fix is a new
+    dimension rather than a change to this one.** `explain profile` now states
+    both meanings outright: `turns` counts **CALLER** turns — "one
+    send_message / complete() / ask() / session.wake, counted when it ENDS; a
+    tool loop inside one prompt is one turn and **cannot cross this ceiling
+    while it runs**" — which is this trap, in the framework's own words, and
+    confirms the measurement above. The new `model_turns` counts **MODEL
+    round-trips**, "one provider response inside the chat loop, counted as it
+    arrives, so an abort rung stops a tool loop inside one prompt (what the
+    session record's `turn_count` approximates)". So `model_turns` is the
+    dimension that does what `turns` was believed to do, and the 13
+    `_base_<agent>` ceilings do not declare it yet. Adding it is still a
+    sizing decision about this pipeline (see `docs/gaps.md`, 2026-11-01).
+14. **The `usd` ceiling is LIVE on `openrouter_sonnet` and INERT on
+    `minimax_m3`, and nothing warns you which.** `explain profile` (rc41,
+    jaato#1994): `usd` is "the provider's reported cost, else the operator
+    pricing table (`.jaato/pricing.json`, exact model name) x the reported
+    tokens. **Never estimated**: with neither source … it stays 0 and a usd
+    ceiling is inert." **There is no `.jaato/pricing.json` in this workspace
+    nor in `~/.jaato/`**, so the dimension lives or dies on whether the
+    provider reports a cost. Measured over this repository's own records:
+    `backtests/pilot` 60 of 60 arms priced ($47.18) and
+    `backtests/determinism` 5 of 5 ($4.15), both `openrouter_sonnet`; and
+    `backtests/predict-2026-10` **0 of 33 arms priced**, which is
+    `minimax_m3`. The NVDA 2026-10-17 run reports `cost_usd: None` on every
+    session beside real token counts — *measured but unpriced*, the middle one
+    of `sessionlog.py`'s three money states. So on `minimax_m3` **two of the
+    four declared dimensions bound nothing**: `usd` has no data to accumulate
+    and `turns` cannot bound a tool loop (trap #13), leaving `tool_calls` and
+    `seconds`. `anthropic_sonnet` has never run a full pipeline, so it is
+    UNMEASURED rather than assumed — it is a native provider with no pricing
+    entry, which is the shape that comes out inert, but that is a prediction
+    and not a measurement. Either give `pricing.json` an entry per model or
+    stop treating `usd` as a guard off OpenRouter; see `docs/gaps.md`,
+    2026-11-01.
 
 ---
 
