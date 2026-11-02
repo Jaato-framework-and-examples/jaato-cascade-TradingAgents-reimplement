@@ -392,6 +392,23 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   and stopped a read from rewriting a session record (#2012) — which matters
   here because `runview` reads `.jaato/sessions/<id>.json` on every board
   request.
+  **2026-11-02: rc41 -> `0.30.0rc42`, protocol unchanged at 1.55 again.**
+  Daemon `ef418cd5` -> `0951c386` (11 commits), rc42 built from that same
+  commit; freeze diff one line of 52, `pip check` clean, doctor **0 fail, 7
+  warn, 25 checks**, unit 214 passed, end-to-end 3 passed in 122.75 s, 40/40
+  `confined=True`, cold start 3.64 s. `pyproject.toml` untouched, so no
+  entry-point re-registration. **`jaato-premium` and `jaato-agent-service`
+  were ALREADY at the newest releases** (0.1.216 and 0.1.0rc2) in the daemon's
+  venv — another session had moved them since 2026-11-01, which is what a
+  shared host looks like: check before installing, and do not assume the
+  version you left is the version you will find. That pull also reworked the
+  references CATALOG (jaato#2017, #2018, and a new
+  `plugins/references/catalog_location.py`), which matters here because
+  `_base_trader` wires `references(preload)` + `preselected: [stop-placement]`
+  — `explain plugin references` now prints the tiers outright, and a session
+  with a `config_root` (ours) loads `<config_root>/references`, which is
+  exactly where this workspace's catalog lives. Validate reports no references
+  finding on any set.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
   never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23, 2026-10-30 and
@@ -1016,6 +1033,28 @@ for `rules_read`.
     and not a measurement. Either give `pricing.json` an entry per model or
     stop treating `usd` as a guard off OpenRouter; see `docs/gaps.md`,
     2026-11-01.
+15. **"Saves every loaded session" is BEST EFFORT, and restarting this SHARED
+    daemon can destroy another tenant's record.** `jaato-doctor`'s
+    `stop button` line says `--stop` "saves every loaded session, then cancels
+    each and reaps the runners", which reads as a guarantee. Measured
+    2026-11-02, on a routine restart from this session: during shutdown the
+    daemon logged `[ERROR] session_manager: Failed to save session
+    20261101_193857: runner RPC closed before id=151 responded`, then
+    `session_end RPC failed (RunnerRPCClient is closed); falling through to
+    runner`. That session was **not this workspace's** — another tenant's,
+    loaded since 19:38 the evening before — and afterwards
+    `find /home/apanoia -name '*20261101_193857*'` returns NOTHING, so the
+    record is GONE, not merely stale. The shape is not new with this release:
+    it appears 5 times across the rotated `/tmp/jaato.log*`. Two things to
+    hold before restarting a daemon that serves thirteen workspaces: the save
+    can lose a long-loaded session whose runner RPC closes first, and **there
+    is no one-line pre-flight from a shell** — `session orphans` and
+    `session stop <id>`, which doctor names in the same breath, are commands
+    typed INSIDE an attached client, not subcommands of `jaato`
+    (`jaato session orphans` is "unrecognized arguments"). A restart is cheap
+    for THIS repository, whose sessions are short-lived and whose records
+    `sessionlog.py` writes per stage while the session is still attached; it
+    is not necessarily cheap for whoever else is resident.
 
 ---
 

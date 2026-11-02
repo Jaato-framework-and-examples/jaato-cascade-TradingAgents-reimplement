@@ -3169,6 +3169,76 @@ ceilings. The new baseline to expect, all four sets exiting 0 with zero
 workspace-tier errors: `openrouter_sonnet` 4 warn, `minimax_m3` and
 `anthropic_sonnet` 17 warn, `echo` 16 warn + 13 info.
 
+## The restart cost another tenant a session record (2026-11-02)
+
+An uneventful move with one thing worth keeping. The daemon went `ef418cd5`
+-> `0951c386` (11 commits) with the protocol **unchanged at 1.55** for the
+second round running, and the client to `jaato-sdk 0.30.0rc42`, built from
+that same commit. Freeze diff exactly one line out of 52, `pip check` clean,
+doctor **0 fail, 7 warn, 25 checks**, unit **214 passed**, end to end **3
+passed in 122.75 s**, **40/40 `confined=True`**, cold start 3.64 s to
+`answer_queued`. No `pyproject.toml` change, so no entry-point
+re-registration.
+
+**`--stop`'s "saves every loaded session" is best effort, and this restart
+proved it by losing someone else's record.** During shutdown:
+
+```
+[ERROR] session_manager: Failed to save session 20261101_193857:
+        runner RPC closed before id=151 responded
+[WARNING] core: JaatoServer.shutdown: session_end RPC failed
+        (RunnerRPCClient is closed); falling through to runner
+```
+
+That session is **not this workspace's** — absent from `.jaato/sessions/` and
+from `~/.jaato/sessions/` — and it had been loaded since 19:38 the previous
+evening. After the restart, `find /home/apanoia -name '*20261101_193857*'`
+returns nothing at all, so the record is GONE rather than stale. The failure
+is not new with this release: the same shape appears 5 times across the
+rotated `/tmp/jaato.log*`, so it is an occasional shutdown race that a restart
+can land on, not a regression introduced by rc42/rc43.
+
+Three honest consequences:
+
+* **A restart of the shared daemon is not free for other tenants**, and
+  `jaato-doctor`'s wording ("saves every loaded session, then cancels each and
+  reaps the runners") reads as a guarantee it cannot make. The longer a
+  session has been loaded, the more there is to lose.
+* **There is no one-line pre-flight from a shell.** `session orphans` and
+  `session stop <id>` — which doctor names in the same sentence, and which
+  would be exactly the right check — are commands typed INSIDE an attached
+  client; `jaato session orphans` answers "unrecognized arguments". So
+  "see what is resident before restarting" is not currently a thing an
+  operator can do from a prompt, which is worth saying plainly rather than
+  recommending a check that does not exist.
+* **This repository is nearly immune to it, and that is by design rather than
+  luck.** Its sessions are short-lived, and `sessionlog.py` asks
+  `get_diagnostics()` and writes the session's record WHILE THE SESSION IS
+  STILL ATTACHED, per stage — precisely because after the context exits nobody
+  can answer. A driver that waited for shutdown to persist what it learned
+  would be exposed to this exact failure.
+
+**The references catalog was reworked, and our wiring still resolves.**
+jaato#2017 ("curation writes the catalog the session loads"), jaato#2018 (a
+promoted local claim copies its document into the catalog) and a new
+`plugins/references/catalog_location.py` all landed in this pull, and
+`_base_trader` is the one profile here that depends on the catalog —
+`references(preload, tools:[listReferences, selectReferences])` with
+`preselected: [stop-placement]`. Asked rather than assumed:
+`explain plugin references` now prints the tiers, and the rule that applies to
+us is "the session has a config_root: `<config_root>/references`". Ours is
+`.jaato`, and the catalog is at `.jaato/references/<bundle>/*.json` — the same
+place. `validate` reports zero references findings on every set.
+
+**And a note on a shared host.** `jaato-premium` and `jaato-agent-service`
+were already at the newest releases (0.1.216 and 0.1.0rc2) in the daemon's
+venv before this round began; another session moved them after 2026-11-01,
+when this one installed 0.1.215 and 0.1.0rc1. Nothing was wrong and nothing
+needed doing — but the lesson is to CHECK the installed version against the
+latest release rather than assume the version you left is the version you will
+find, which is the same discipline the premium checkout already forced
+(`docs/gaps.md`, 2026-11-01).
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
