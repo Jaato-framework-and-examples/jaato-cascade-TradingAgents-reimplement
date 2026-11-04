@@ -409,6 +409,24 @@ checkout. See `docs/gaps.md`, 2026-10-30.
   with a `config_root` (ours) loads `<config_root>/references`, which is
   exactly where this workspace's catalog lives. Validate reports no references
   finding on any set.
+  **2026-11-04: rc42 -> `0.30.0rc43`, protocol unchanged at 1.55 a third
+  round.** Daemon `0951c386` -> `79c0fe35` (4 commits), rc43 from that same
+  commit; `jaato-agent-service` **0.1.0rc4 -> 0.1.0rc8** in the daemon's venv
+  (it had drifted four releases behind while `jaato-premium` was already
+  current at 0.1.216 — ANOTHER reason to check installed-vs-latest for all
+  three repositories each round, not just the SDK). Client freeze diff one
+  line of 52, daemon freeze diff one line of 202, `pip check` clean, doctor
+  **0 fail, 7 warn, 25 checks**, unit 214 passed, end-to-end 3 passed in
+  140.03 s, 40/40 `confined=True`, cold start 3.68 s. rc8's `runtime` extra
+  adds `jsonschema`, already satisfied there (`--no-index` would have failed
+  otherwise), and it carries a fourth subcommand, `keycloak`, beside `new` /
+  `check` / `authz`.
+  **A package already imported by the daemon needs a RESTART, where a new
+  entry point does not.** 2026-11-01 measured that a newly installed package's
+  entry points reach the running daemon live; moving an EXISTING one is
+  different, because the daemon holds the old module in `sys.modules`. So
+  agent-service rc8 took a second restart to actually run — install both
+  packages first and restart once, rather than restarting per package.
   `--ignore-requires-python`
   would only have deferred the moment the code genuinely needs 3.14, so it was
   never the fix. See `docs/gaps.md`, 2026-10-17, 2026-10-23, 2026-10-30 and
@@ -1055,6 +1073,32 @@ for `rules_read`.
     for THIS repository, whose sessions are short-lived and whose records
     `sessionlog.py` writes per stage while the session is still attached; it
     is not necessarily cheap for whoever else is resident.
+    **It happened again the very next restart, worse, and then a PRE-FLIGHT
+    was found.** On 2026-11-04 a routine restart lost TWO records,
+    `20261104_140637` and `20261104_140829` — neither this workspace's,
+    neither anywhere on disk afterwards — and the second had been created
+    **29 seconds** before the restart, so that was live work, not a stale
+    session. So the hazard is not confined to long-resident sessions; it is
+    whatever happens to be running. The correction to the paragraph above:
+    `session orphans` is indeed unavailable from a shell, but a usable
+    pre-flight exists anyway, from `ps` and the log:
+
+    ```bash
+    # Session-bound runners, i.e. work in flight.  A POOL slot carries
+    # `--template-mode`; anything without it is serving a session.
+    ps -o pid,etime,cmd -u "$USER" | grep 'jaato_server.server.runner' \
+        | grep -v -- --template-mode
+    tail -1 /tmp/jaato.log      # how long since the daemon last did anything
+    ```
+
+    Measured the same day: three runners, ALL `--template-mode`, and no log
+    line for two minutes — restarted on that evidence and **nothing was
+    lost**, where the restart twenty minutes earlier had destroyed two
+    records. It is a proxy rather than an answer (a session idle between
+    turns still holds a runner, and a client attached with nothing in flight
+    does not show here), so read it as "is anyone working right now", not as
+    "is anything loaded". That is still the difference between restarting
+    blind and restarting on evidence.
 
 ---
 

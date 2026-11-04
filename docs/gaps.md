@@ -3239,6 +3239,70 @@ latest release rather than assume the version you left is the version you will
 find, which is the same discipline the premium checkout already forced
 (`docs/gaps.md`, 2026-11-01).
 
+## The pre-flight I said did not exist (2026-11-04)
+
+The move itself was small: daemon `0951c386` -> `79c0fe35` (4 commits) with
+the protocol **unchanged at 1.55** for a third consecutive round, client to
+`jaato-sdk 0.30.0rc43` from that same commit, and `jaato-agent-service`
+**0.1.0rc4 -> 0.1.0rc8** in the daemon's venv. Client freeze diff one line of
+52, daemon freeze diff one line of 202, `pip check` clean, doctor **0 fail, 7
+warn, 25 checks**, unit **214 passed**, end to end **3 passed in 140.03 s**,
+**40/40 `confined=True`**, cold start 3.68 s.
+
+**Trap #15 recurred on the very next restart, and worse.** The first restart
+of this round lost TWO session records — `20261104_140637` and
+`20261104_140829` — neither this workspace's, and neither present anywhere
+under `$HOME` afterwards. The second had been created **29 seconds before the
+restart**. The 2026-11-02 finding described a session loaded for fourteen
+hours, which invited the reading that the hazard is about staleness; it is
+not. It is about whatever is running at the moment the daemon goes down, and
+a session seconds old is the worst case, because it is live work.
+
+**And the claim that there is no shell pre-flight was too strong.**
+`session orphans` really is unavailable outside an attached client, but the
+question it answers can be approximated from `ps` and the log:
+
+```bash
+# Session-bound runners.  A POOL slot carries `--template-mode`;
+# anything without it is serving a session.
+ps -o pid,etime,cmd -u "$USER" | grep 'jaato_server.server.runner' \
+    | grep -v -- --template-mode
+tail -1 /tmp/jaato.log          # how long since the daemon did anything
+```
+
+Measured on the SECOND restart of the same round, twenty minutes after the
+first: three runner processes, **all `--template-mode`**, and no log line for
+two minutes. Restarted on that evidence and **nothing was lost** — against two
+records destroyed by the blind restart shortly before. One trial each way is
+not a proof, but the asymmetry is the point: the check costs two commands and
+distinguishes "nobody is working" from "somebody is mid-turn".
+
+It is a PROXY, and the limits belong in the record: a session idle between
+turns still holds a runner and so reads as busy, and a client attached with
+nothing in flight does not appear at all. So it answers "is anyone working
+right now", not "is anything loaded" — which is the weaker of the two
+questions, but the one that predicts whether a restart costs somebody their
+work.
+
+**A second mechanical finding: an already-imported package needs a restart
+where a new one does not.** On 2026-11-01 this repository measured that a
+newly installed package's entry points reach the RUNNING daemon live —
+`explain agent-service` answered before any restart. Moving an EXISTING
+package is not the same: the daemon holds the old module in `sys.modules`, so
+rc8's code did not run until the daemon was restarted, even though its files
+and metadata were in place. The practical consequence for a round that moves
+more than one package: install everything first and restart ONCE. This round
+restarted twice because the agent-service request arrived after the first
+restart, which is exactly the cost that advice avoids — and, given trap #15,
+restarts are the expensive step, not the installs.
+
+**On keeping three repositories in step.** `jaato-premium` was already current
+at 0.1.216, moved by another session, while `jaato-agent-service` had drifted
+**four releases** behind (rc4 against rc8). Neither fact was visible without
+asking. Checking installed-against-latest for all three repositories at the
+start of a round costs one command and is now part of the recipe; "the version
+you left is not the version you will find" cuts both ways.
+
 ## Feature parity with the reference implementation
 
 The table above tracks gaps of the *port* (framework limits, decisions).
